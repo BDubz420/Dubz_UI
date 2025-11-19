@@ -1,5 +1,3 @@
---[[
-
 if not Dubz then return end
 
 Dubz.Vote = Dubz.Vote or {}
@@ -7,20 +5,51 @@ Dubz.Vote.Client = Dubz.Vote.Client or {}
 
 local VotePanels = {}  -- [id] = panel
 
--- Right side container for votes (like your old one)
-if IsValid(DubzVotingContainer) then DubzVotingContainer:Remove() end
-
-local cont = vgui.Create("DPanel")
-cont:SetSize(400, ScrH())
-cont:SetPos(ScrW() - 420, 0)
-cont:SetMouseInputEnabled(true)
-cont:SetKeyboardInputEnabled(false)
-cont:SetZPos(32767)
-DubzVotingContainer = cont
-
-function cont:Paint(w, h)
-    draw.SimpleText("Press F3 to use cursor","DubzHUD_Small",w / 2, 16,Color(220, 220, 220, 220),TEXT_ALIGN_CENTER)
+local function LayoutContainer(panel)
+    panel:SetSize(400, ScrH())
+    panel:SetPos(ScrW() - 420, 0)
 end
+
+local function EnsureVoteContainer()
+    if IsValid(DubzVotingContainer) then
+        return DubzVotingContainer
+    end
+
+    if not (vgui and vgui.Create) then return end
+
+    local cont = vgui.Create("DPanel")
+    if not IsValid(cont) then
+        if not Dubz.Vote._containerRetry then
+            Dubz.Vote._containerRetry = true
+            timer.Simple(0, function()
+                Dubz.Vote._containerRetry = nil
+                EnsureVoteContainer()
+            end)
+        end
+        return
+    end
+
+    LayoutContainer(cont)
+    cont:SetMouseInputEnabled(true)
+    cont:SetKeyboardInputEnabled(false)
+    cont:SetZPos(32767)
+
+    function cont:Paint(w, h)
+        draw.SimpleText("Press F3 to use cursor", "DubzHUD_Small", w / 2, 16,
+            Color(220, 220, 220, 220), TEXT_ALIGN_CENTER)
+    end
+
+    hook.Add("OnScreenSizeChanged", "DubzVoteContainerLayout", function()
+        if IsValid(DubzVotingContainer) then
+            LayoutContainer(DubzVotingContainer)
+        end
+    end)
+
+    DubzVotingContainer = cont
+    return cont
+end
+
+hook.Add("InitPostEntity", "DubzVoteEnsureContainer", EnsureVoteContainer)
 
 local function DrawBubble(x, y, w, h, col)
     if Dubz.DrawBubble then
@@ -32,20 +61,29 @@ end
 
 -- Open a vote panel
 function Dubz.Vote.OpenPanel(id, question, options, duration)
+    local container = EnsureVoteContainer()
+    if not IsValid(container) then
+        timer.Simple(0, function()
+            if VotePanels[id] then return end
+            Dubz.Vote.OpenPanel(id, question, options, duration)
+        end)
+        return
+    end
+
     local accent = Dubz.GetAccentColor and Dubz.GetAccentColor() or Color(40,140,200)
 
     if IsValid(VotePanels[id]) then VotePanels[id]:Remove() end
 
-    local p = vgui.Create("DPanel", DubzVotingContainer)
+    local p = vgui.Create("DPanel", container)
     p:SetSize(360, 190)
     p:SetAlpha(0)
-    p.Duration = duration or 15
+    p.Duration = math.max(duration or 15, 1)
     p.EndTime = CurTime() + p.Duration
     p.Closing = false
     p.Id = id
 
-    local parentW = DubzVotingContainer:GetWide()
-    local offsetY = 50 + (#DubzVotingContainer:GetChildren() - 1) * 12
+    local parentW = container:GetWide()
+    local offsetY = 50 + (#container:GetChildren() - 1) * 12
 
     p:SetPos(parentW, offsetY)
     p:MoveTo(parentW - 360 - 20, offsetY, 0.25, 0, 0.2)
@@ -59,6 +97,12 @@ function Dubz.Vote.OpenPanel(id, question, options, duration)
         self:AlphaTo(0, 0.2, 0, function()
             if IsValid(self) then self:Remove() end
         end)
+    end
+
+    function p:OnRemove()
+        if VotePanels[self.Id] == self then
+            VotePanels[self.Id] = nil
+        end
     end
 
     function p:Paint(w, h)
@@ -173,20 +217,27 @@ net.Receive("Dubz_Vote_End", function()
         results[i] = net.ReadUInt(12)
     end
     local winner = net.ReadUInt(8)
+    local cancelled = net.ReadBool()
 
     local pnl = VotePanels[id]
     if IsValid(pnl) then
         pnl:SlideOut()
-        VotePanels[id] = nil
     end
 
     -- Optional: show result as notification
-    if winner > 0 then
-        local txt = string.format("Vote '%s' finished. Option #%d won with %d votes.",
-            id, winner, results[winner] or 0)
-        if notification and notification.AddLegacy then
-            notification.AddLegacy(txt, 0, 5)
+    if notification and notification.AddLegacy then
+        local txt
+        if cancelled then
+            txt = string.format("Vote '%s' was cancelled.", id)
+        elseif winner > 0 then
+            txt = string.format("Vote '%s' finished. Option #%d won with %d votes.",
+                id, winner, results[winner] or 0)
+        else
+            txt = string.format("Vote '%s' ended with no winner.", id)
+        end
+
+        if txt then
+            notification.AddLegacy(txt, cancelled and 1 or 0, 5)
         end
     end
 end)
---]]
