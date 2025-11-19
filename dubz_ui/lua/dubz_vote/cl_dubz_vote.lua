@@ -5,6 +5,53 @@ Dubz.Vote.Client = Dubz.Vote.Client or {}
 
 local VotePanels = {}  -- [id] = panel
 
+local function LayoutContainer(panel)
+    panel:SetSize(400, ScrH())
+    panel:SetPos(ScrW() - 420, 0)
+end
+
+local function EnsureVoteContainer()
+    if IsValid(DubzVotingContainer) then
+        return DubzVotingContainer
+    end
+
+    if not (vgui and vgui.Create) then return end
+
+    local cont = vgui.Create("DPanel")
+    if not IsValid(cont) then
+        if not Dubz.Vote._containerRetry then
+            Dubz.Vote._containerRetry = true
+            timer.Simple(0, function()
+                Dubz.Vote._containerRetry = nil
+                EnsureVoteContainer()
+            end)
+        end
+        return
+    end
+
+    LayoutContainer(cont)
+    cont:SetMouseInputEnabled(true)
+    cont:SetKeyboardInputEnabled(false)
+    cont:SetZPos(32767)
+
+    function cont:Paint(w, h)
+        draw.SimpleText("Press F3 to use cursor", "DubzHUD_Small", w / 2, 16,
+            Color(220, 220, 220, 220), TEXT_ALIGN_CENTER)
+    end
+
+    hook.Add("OnScreenSizeChanged", "DubzVoteContainerLayout", function()
+        if IsValid(DubzVotingContainer) then
+            LayoutContainer(DubzVotingContainer)
+        end
+    end)
+
+    DubzVotingContainer = cont
+    return cont
+end
+
+hook.Add("InitPostEntity", "DubzVoteEnsureContainer", EnsureVoteContainer)
+local VotePanels = {}  -- [id] = panel
+
 -- Right side container for votes (like your old one)
 if IsValid(DubzVotingContainer) then DubzVotingContainer:Remove() end
 
@@ -30,10 +77,20 @@ end
 
 -- Open a vote panel
 function Dubz.Vote.OpenPanel(id, question, options, duration)
+    local container = EnsureVoteContainer()
+    if not IsValid(container) then
+        timer.Simple(0, function()
+            if VotePanels[id] then return end
+            Dubz.Vote.OpenPanel(id, question, options, duration)
+        end)
+        return
+    end
+
     local accent = Dubz.GetAccentColor and Dubz.GetAccentColor() or Color(40,140,200)
 
     if IsValid(VotePanels[id]) then VotePanels[id]:Remove() end
 
+    local p = vgui.Create("DPanel", container)
     local p = vgui.Create("DPanel", DubzVotingContainer)
     p:SetSize(360, 190)
     p:SetAlpha(0)
@@ -41,6 +98,9 @@ function Dubz.Vote.OpenPanel(id, question, options, duration)
     p.EndTime = CurTime() + p.Duration
     p.Closing = false
     p.Id = id
+
+    local parentW = container:GetWide()
+    local offsetY = 50 + (#container:GetChildren() - 1) * 12
 
     local parentW = DubzVotingContainer:GetWide()
     local offsetY = 50 + (#DubzVotingContainer:GetChildren() - 1) * 12

@@ -8,6 +8,39 @@ local DATA_FILE = DATA_DIR .. "/gangs.json"
 
 Dubz.GangByMember = Dubz.GangByMember or {} -- sid64 -> gangId
 
+local function normalizeVec(tbl)
+    if not istable(tbl) then return { x = 0, y = 0, z = 0 } end
+    if tbl.x then
+        return { x = tonumber(tbl.x) or 0, y = tonumber(tbl.y) or 0, z = tonumber(tbl.z) or 0 }
+    elseif tbl[1] then
+        return { x = tonumber(tbl[1]) or 0, y = tonumber(tbl[2]) or 0, z = tonumber(tbl[3]) or 0 }
+    end
+    return { x = 0, y = 0, z = 0 }
+end
+
+local function normalizeAng(tbl)
+    if not istable(tbl) then return { p = 0, y = 0, r = 0 } end
+    if tbl.p then
+        return { p = tonumber(tbl.p) or 0, y = tonumber(tbl.y) or 0, r = tonumber(tbl.r) or 0 }
+    elseif tbl[1] then
+        return { p = tonumber(tbl[1]) or 0, y = tonumber(tbl[2]) or 0, r = tonumber(tbl[3]) or 0 }
+    end
+    return { p = 0, y = 0, r = 0 }
+end
+
+local function NormalizeTerritory(id, terr)
+    if not istable(terr) then return nil end
+    terr = terr or {}
+    local data = {}
+    data.id = tostring(terr.id or id or ("T" .. string.sub(util.CRC(SysTime() .. tostring(math.random())), 1, 8)))
+    data.name = tostring(terr.name or terr.TerritoryName or "Territory")
+    data.sprayer = tostring(terr.sprayer or terr.owner or "")
+    data.time = tonumber(terr.time) or os.time()
+    data.pos = normalizeVec(terr.pos or terr.position or {})
+    data.ang = normalizeAng(terr.ang or terr.angles or {})
+    return data
+end
+
 -- Data normalizers ---------------------------------------------------
 local function NormalizeGraffiti(g)
     g.graffiti = g.graffiti or {}
@@ -54,6 +87,17 @@ local function SanitizeGang(gid, gang)
 
     gang.rankTitles = gang.rankTitles or table.Copy(Dubz.DefaultRankTitles)
 
+    local terrs = {}
+    if istable(gang.territories) then
+        for key, terr in pairs(gang.territories) do
+            local norm = NormalizeTerritory(key, terr)
+            if norm and norm.id ~= "" then
+                terrs[norm.id] = norm
+            end
+        end
+    end
+    gang.territories = terrs
+
     NormalizeGraffiti(gang)
 
     return gang
@@ -82,6 +126,53 @@ local function BuildSaveBlob()
     end
 
     return blob
+end
+
+function AddGangTerritory(gid, info)
+    if not gid or gid == "" then return nil end
+    if not Dubz.Gangs or not Dubz.Gangs[gid] then return nil end
+    local g = Dubz.Gangs[gid]
+    g.territories = g.territories or {}
+
+    local terr = NormalizeTerritory(nil, info)
+    if not terr then return nil end
+
+    while g.territories[terr.id] do
+        terr.id = "T" .. string.sub(util.CRC(SysTime() .. tostring(math.random())), 1, 8)
+    end
+
+    g.territories[terr.id] = terr
+    SaveGangs()
+    BroadcastUpdate(gid)
+
+    if Dubz.Log then
+        Dubz.Log(string.format("%s claimed territory '%s' for %s", terr.sprayer or "Unknown", terr.name or terr.id, g.name or gid), "INFO", "TERRITORY")
+    end
+
+    return terr.id
+end
+
+function RemoveGangTerritory(gid, target)
+    if not gid or gid == "" then return end
+    if not Dubz.Gangs or not Dubz.Gangs[gid] then return end
+    local g = Dubz.Gangs[gid]
+    if not g.territories then return end
+
+    local removed
+    for id, terr in pairs(g.territories) do
+        if id == target or (istable(terr) and (terr.name == target)) then
+            g.territories[id] = nil
+            removed = terr
+        end
+    end
+
+    if removed then
+        SaveGangs()
+        BroadcastUpdate(gid)
+        if Dubz.Log then
+            Dubz.Log(string.format("Territory '%s' removed from %s", removed.name or target, g.name or gid), "WARN", "TERRITORY")
+        end
+    end
 end
 
 -- Keep NW vars in sync so HUD / overhead / menus can read gang name + color
@@ -434,6 +525,10 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
             allowWars = true
         }
 
+        if Dubz.Log then
+            Dubz.Log(string.format("%s created gang '%s'", ply:Nick(), Dubz.Gangs[gid].name or gid), "INFO", "GANG")
+        end
+
         Dubz.GangByMember[sid] = gid
 
         SaveGangs()
@@ -490,6 +585,9 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         for m,_ in pairs(Dubz.GangByMember) do if Dubz.GangByMember[m] == gid then Dubz.GangByMember[m] = nil end end
         SaveGangs(); RebuildRichestGangs()
         net.Start("Dubz_Gang_Update") net.WriteString(gid) net.WriteTable({}) net.Broadcast()
+        if Dubz.Log then
+            Dubz.Log(string.format("%s disbanded gang '%s'", ply:Nick(), gid), "WARN", "GANG")
+        end
         return
     end
 
@@ -612,14 +710,22 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
             if amt <= 0 or not CanAfford(ply, amt) then return end
             TakeMoney(ply, amt)
             local g = Dubz.Gangs[gid]; g.bank = math.max(0, (g.bank or 0) + amt)
-            SaveGangs(); RebuildRichestGangs(); BroadcastUpdate(gid); return
+            SaveGangs(); RebuildRichestGangs(); BroadcastUpdate(gid)
+            if Dubz.Log then
+                Dubz.Log(string.format("%s deposited %s into %s", ply:Nick(), tostring(amt), g.name or gid), "INFO", "GANG")
+            end
+            return
         end
         if act.cmd == "withdraw" and CanWithdrawFromBank(ply, gid) then
             local amt = math.max(0, math.floor(tonumber(act.amount or 0) or 0))
             local g = Dubz.Gangs[gid]; if amt <= 0 or (g.bank or 0) < amt then return end
             g.bank = (g.bank or 0) - amt
             AddMoney(ply, amt)
-            SaveGangs(); RebuildRichestGangs(); BroadcastUpdate(gid); return
+            SaveGangs(); RebuildRichestGangs(); BroadcastUpdate(gid)
+            if Dubz.Log then
+                Dubz.Log(string.format("%s withdrew %s from %s", ply:Nick(), tostring(amt), g.name or gid), "WARN", "GANG")
+            end
+            return
         end
     end
 

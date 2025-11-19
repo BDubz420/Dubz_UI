@@ -8,6 +8,7 @@ end
 
 local frame, overlay, isOpen, switchTo, content = nil, nil, false, nil, nil
 local openedByF4 = false
+local refreshQueued = false
 
 local function ensureOverlay()
     if IsValid(overlay) then return overlay end
@@ -122,8 +123,11 @@ local function openMenu(defaultTab, byF4)
     local active = nil
     function switchTo(id, preload)
         content:Clear(); active = id
+        Dubz.MenuActiveTab = id
         local t = Dubz.MenuTabs[id]; if t and t.build then t.build(content, preload) end
     end
+
+    Dubz.MenuActiveTab = ""
 
     for _, t in ipairs(Dubz.Config.Menu.Tabs or {}) do
         local btn = sideTabs:Add("DButton")
@@ -148,10 +152,29 @@ local function closeMenu()
     Dubz.MenuLocked = false
 end
 
+function Dubz.RequestMenuRefresh(tabId)
+    if not isOpen then return end
+    if tabId and Dubz.MenuActiveTab ~= tabId then return end
+    if refreshQueued then return end
+    refreshQueued = true
+    timer.Simple(0, function()
+        refreshQueued = false
+        if not isOpen or not switchTo then return end
+        if tabId and Dubz.MenuActiveTab ~= tabId then return end
+        if not Dubz.MenuActiveTab then return end
+        switchTo(Dubz.MenuActiveTab, true)
+    end)
+end
+
+Dubz.RefreshActiveTab = Dubz.RequestMenuRefresh
+Dubz.OpenMenuPanel = openMenu
+Dubz.CloseMenuPanel = closeMenu
+Dubz.IsMenuOpen = function() return isOpen end
+
 -- Input: TAB (hold-to-open) & F4 (toggle open to Market with close button)
 do
     local wasDown = false
-    hook.Add("Think","Dubz_MenuHoldTab", function()
+hook.Add("Think","Dubz_MenuHoldTab", function()
         if not Dubz or not Dubz.Config or not Dubz.Config.Menu or not Dubz.Config.Menu.Enabled then return end
         local key = Dubz.Config.Keys and Dubz.Config.Keys.OpenMenu or KEY_TAB
         local down = input.IsKeyDown(key)
@@ -161,8 +184,10 @@ do
             if not isOpen then
                 openMenu("dashboard", false)
             else
-                -- Menu already open: pressing TAB again unlocks it so release will close
-                Dubz.MenuLocked = false
+                if Dubz.MenuLocked then
+                    Dubz.MenuLocked = false
+                    closeMenu()
+                end
             end
         elseif (not down) and wasDown then
             -- TAB released
@@ -185,5 +210,29 @@ do
             end
         end
         wasF4 = down
+end)
+
+do
+    local hadFocus = false
+    hook.Add("Think","Dubz_MenuFocusTextLock", function()
+        if not isOpen then
+            if hadFocus then
+                Dubz.MenuLocked = false
+                hadFocus = false
+            end
+            return
+        end
+
+        local focus = vgui.GetKeyboardFocus()
+        local needsKeyboard = IsValid(focus) and (focus:GetClassName() == "DTextEntry" or focus:GetClassName() == "DMultiChoice" or focus:GetClassName() == "DBinder")
+
+        if needsKeyboard and not hadFocus then
+            Dubz.MenuLocked = true
+            hadFocus = true
+        elseif not needsKeyboard and hadFocus then
+            Dubz.MenuLocked = false
+            hadFocus = false
+        end
     end)
+end
 end

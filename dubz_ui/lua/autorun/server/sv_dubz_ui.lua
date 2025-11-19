@@ -4,10 +4,13 @@ if SERVER then
     -- 1. AddCSLuaFile all CLIENT + SHARED gang files
     --------------------------------------------------------
     local files = {
+        "dubz_shared/sh_dubz_log.lua",
         "autorun/dubz_ui_config.lua",
         "autorun/client/cl_dubz_ui.lua",
         "dubz_ui/themes.lua",
+        "dubz_hud/cl_chat.lua",
         "dubz_hud/cl_hud.lua",
+        "dubz_hud/cl_voice.lua",
         "dubz_menu/cl_menu.lua",
         "dubz_menu/tabs/cl_tab_dashboard.lua",
         "dubz_menu/tabs/cl_tab_players.lua",
@@ -39,6 +42,8 @@ if SERVER then
     --------------------------------------------------------
     -- LOAD SERVER VOTE LOGIC
     --------------------------------------------------------    
+
+    include("dubz_shared/sh_dubz_log.lua")
 
     include("dubz_vote/sh_dubz_vote.lua")
     include("dubz_vote/sv_dubz_vote.lua")
@@ -196,6 +201,18 @@ if SERVER then
             end
         end
         SaveRichest()
+    end)
+
+    hook.Add("PlayerInitialSpawn","Dubz_LogConnections", function(ply)
+        if Dubz.Log then
+            Dubz.Log(string.format("%s connected", ply:Nick()), "INFO", "PLAYER")
+        end
+    end)
+
+    hook.Add("PlayerDisconnected","Dubz_LogDisconnect", function(ply)
+        if Dubz.Log then
+            Dubz.Log(string.format("%s disconnected", ply:Nick()), "WARN", "PLAYER")
+        end
     end)
 
 end
