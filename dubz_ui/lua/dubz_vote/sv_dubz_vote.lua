@@ -112,6 +112,10 @@ local function FinishVote(id, vote, opts)
         summary = string.format("Vote '%s' finished, winner = %d (%s)", id, winningIndex, vote.options[winningIndex] or "none")
         Dubz.Vote.Log(summary)
         if Dubz.Log then Dubz.Log(summary, "INFO", "VOTE") end
+    if cancelled then
+        Dubz.Vote.Log(string.format("Vote '%s' cancelled (%s)", id, opts and opts.reason or "cancelled"))
+    else
+        Dubz.Vote.Log(string.format("Vote '%s' finished, winner = %d (%s)", id, winningIndex, vote.options[winningIndex] or "none"))
     end
 
     if not cancelled then

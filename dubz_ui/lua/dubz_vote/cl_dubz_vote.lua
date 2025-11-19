@@ -50,6 +50,22 @@ local function EnsureVoteContainer()
 end
 
 hook.Add("InitPostEntity", "DubzVoteEnsureContainer", EnsureVoteContainer)
+local VotePanels = {}  -- [id] = panel
+
+-- Right side container for votes (like your old one)
+if IsValid(DubzVotingContainer) then DubzVotingContainer:Remove() end
+
+local cont = vgui.Create("DPanel")
+cont:SetSize(400, ScrH())
+cont:SetPos(ScrW() - 420, 0)
+cont:SetMouseInputEnabled(true)
+cont:SetKeyboardInputEnabled(false)
+cont:SetZPos(32767)
+DubzVotingContainer = cont
+
+function cont:Paint(w, h)
+    draw.SimpleText("Press F3 to use cursor","DubzHUD_Small",w / 2, 16,Color(220, 220, 220, 220),TEXT_ALIGN_CENTER)
+end
 
 local function DrawBubble(x, y, w, h, col)
     if Dubz.DrawBubble then
@@ -75,6 +91,7 @@ function Dubz.Vote.OpenPanel(id, question, options, duration)
     if IsValid(VotePanels[id]) then VotePanels[id]:Remove() end
 
     local p = vgui.Create("DPanel", container)
+    local p = vgui.Create("DPanel", DubzVotingContainer)
     p:SetSize(360, 190)
     p:SetAlpha(0)
     p.Duration = math.max(duration or 15, 1)
@@ -84,6 +101,9 @@ function Dubz.Vote.OpenPanel(id, question, options, duration)
 
     local parentW = container:GetWide()
     local offsetY = 50 + (#container:GetChildren() - 1) * 12
+
+    local parentW = DubzVotingContainer:GetWide()
+    local offsetY = 50 + (#DubzVotingContainer:GetChildren() - 1) * 12
 
     p:SetPos(parentW, offsetY)
     p:MoveTo(parentW - 360 - 20, offsetY, 0.25, 0, 0.2)
