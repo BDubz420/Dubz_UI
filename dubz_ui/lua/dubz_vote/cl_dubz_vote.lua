@@ -1,5 +1,3 @@
---[[
-
 if not Dubz then return end
 
 Dubz.Vote = Dubz.Vote or {}
@@ -39,7 +37,7 @@ function Dubz.Vote.OpenPanel(id, question, options, duration)
     local p = vgui.Create("DPanel", DubzVotingContainer)
     p:SetSize(360, 190)
     p:SetAlpha(0)
-    p.Duration = duration or 15
+    p.Duration = math.max(duration or 15, 1)
     p.EndTime = CurTime() + p.Duration
     p.Closing = false
     p.Id = id
@@ -59,6 +57,12 @@ function Dubz.Vote.OpenPanel(id, question, options, duration)
         self:AlphaTo(0, 0.2, 0, function()
             if IsValid(self) then self:Remove() end
         end)
+    end
+
+    function p:OnRemove()
+        if VotePanels[self.Id] == self then
+            VotePanels[self.Id] = nil
+        end
     end
 
     function p:Paint(w, h)
@@ -173,20 +177,27 @@ net.Receive("Dubz_Vote_End", function()
         results[i] = net.ReadUInt(12)
     end
     local winner = net.ReadUInt(8)
+    local cancelled = net.ReadBool()
 
     local pnl = VotePanels[id]
     if IsValid(pnl) then
         pnl:SlideOut()
-        VotePanels[id] = nil
     end
 
     -- Optional: show result as notification
-    if winner > 0 then
-        local txt = string.format("Vote '%s' finished. Option #%d won with %d votes.",
-            id, winner, results[winner] or 0)
-        if notification and notification.AddLegacy then
-            notification.AddLegacy(txt, 0, 5)
+    if notification and notification.AddLegacy then
+        local txt
+        if cancelled then
+            txt = string.format("Vote '%s' was cancelled.", id)
+        elseif winner > 0 then
+            txt = string.format("Vote '%s' finished. Option #%d won with %d votes.",
+                id, winner, results[winner] or 0)
+        else
+            txt = string.format("Vote '%s' ended with no winner.", id)
+        end
+
+        if txt then
+            notification.AddLegacy(txt, cancelled and 1 or 0, 5)
         end
     end
 end)
---]]

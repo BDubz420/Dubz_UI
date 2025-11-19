@@ -8,6 +8,82 @@ local DATA_FILE = DATA_DIR .. "/gangs.json"
 
 Dubz.GangByMember = Dubz.GangByMember or {} -- sid64 -> gangId
 
+-- Data normalizers ---------------------------------------------------
+local function NormalizeGraffiti(g)
+    g.graffiti = g.graffiti or {}
+
+    local name = g.name or "Gang"
+
+    g.graffiti.text   = g.graffiti.text   or name
+    g.graffiti.font   = g.graffiti.font   or "Trebuchet24"
+    g.graffiti.scale  = tonumber(g.graffiti.scale) or 1
+    g.graffiti.effect = g.graffiti.effect or "Clean"
+
+    g.graffiti.fontScaled =
+        g.graffiti.fontScaled or
+        ("DubzGraffiti_Font_" .. math.floor((g.graffiti.scale or 1) * 100))
+
+    local c = g.color or { r=255, g=255, b=255 }
+    g.graffiti.color = {
+        r = c.r or 255,
+        g = c.g or 255,
+        b = c.b or 255
+    }
+end
+
+local function SanitizeGang(gid, gang)
+    if not istable(gang) then return nil end
+
+    gang.id   = gang.id   or gid
+    gang.name = tostring(gang.name or "Gang")
+    gang.desc = tostring(gang.desc or "")
+
+    gang.bank  = math.max(0, tonumber(gang.bank) or 0)
+    gang.color = gang.color or { r = 255, g = 255, b = 255 }
+
+    gang.members = gang.members or {}
+    for sid64, member in pairs(gang.members) do
+        if type(sid64) ~= "string" or not istable(member) then
+            gang.members[sid64] = nil
+        else
+            member.name   = tostring(member.name or "Member")
+            member.rank   = math.Clamp(tonumber(member.rank) or Dubz.GangRanks.Member, 1, Dubz.GangRanks.Leader)
+            member.joined = tonumber(member.joined) or os.time()
+        end
+    end
+
+    gang.rankTitles = gang.rankTitles or table.Copy(Dubz.DefaultRankTitles)
+
+    NormalizeGraffiti(gang)
+
+    return gang
+end
+
+local function RebuildGangByMember()
+    Dubz.GangByMember = {}
+
+    for gid, gang in pairs(Dubz.Gangs or {}) do
+        if istable(gang.members) then
+            for sid64, _ in pairs(gang.members) do
+                if type(sid64) == "string" then
+                    Dubz.GangByMember[sid64] = gid
+                end
+            end
+        end
+    end
+end
+
+local function BuildSaveBlob()
+    local blob = { version = 1, gangs = {} }
+
+    for gid, gang in pairs(Dubz.Gangs or {}) do
+        blob.gangs[gid] = table.Copy(gang)
+        SanitizeGang(gid, blob.gangs[gid])
+    end
+
+    return blob
+end
+
 -- Keep NW vars in sync so HUD / overhead / menus can read gang name + color
 local function RefreshGangNWForAll()
     for _, ply in ipairs(player.GetAll()) do
@@ -33,93 +109,69 @@ local function RefreshGangNWForAll()
 end
 
 local function SaveGangs()
-    print("[Dubz Gangs] SaveGangs() called")
+    if not istable(Dubz.Gangs) then
+        Dubz.Gangs = {}
+    end
 
     if not file.IsDir(DATA_DIR, "DATA") then
-        print("[Dubz Gangs] Creating data directory…")
         file.CreateDir(DATA_DIR)
     end
 
-    for gid, g in pairs(Dubz.Gangs or {}) do
-        print("[Dubz Gangs] Saving gang:", gid)
-        NormalizeGraffiti(g)
+    local ok, blob = pcall(BuildSaveBlob)
+    if not ok then
+        print("[Dubz Gangs] Failed to build gangs save blob:", blob)
+        return
     end
 
-    local json = util.TableToJSON(Dubz.Gangs or {}, true)
-    print("[Dubz Gangs] Final JSON to save:", json)
+    local encoded = util.TableToJSON(blob, true)
+    if not encoded then
+        print("[Dubz Gangs] Failed to encode gangs for saving!")
+        return
+    end
 
-    file.Write(DATA_FILE, json)
+    file.Write(DATA_FILE, encoded)
 
-    print("[Dubz Gangs] Save complete.")
+    RebuildGangByMember()
     RefreshGangNWForAll()
+end
+
+local function ExtractGangTable(tbl)
+    if not istable(tbl) then return {} end
+    if istable(tbl.gangs) then return tbl.gangs end
+    return tbl
 end
 
 -- FIXED LoadGangs (ensures graffiti exists BEFORE any sync happens)
 local function LoadGangs()
-    print("[Dubz Gangs] LoadGangs() called")
-
     if file.Exists(DATA_FILE, "DATA") then
         local raw = file.Read(DATA_FILE, "DATA") or "{}"
-        print("[Dubz Gangs] Raw file content:", raw)
-
-        Dubz.Gangs = util.JSONToTable(raw) or {}
-        print("[Dubz Gangs] Loaded", table.Count(Dubz.Gangs), "gangs from file.")
+        local ok, decoded = pcall(util.JSONToTable, raw)
+        if ok and istable(decoded) then
+            Dubz.Gangs = ExtractGangTable(decoded)
+        else
+            print("[Dubz Gangs] Failed to parse gangs file, starting fresh.")
+            Dubz.Gangs = {}
+        end
     else
-        print("[Dubz Gangs] No gangs file found, starting fresh.")
         Dubz.Gangs = {}
     end
 
-    -- **ENSURE GRAFFITI EXISTS BEFORE ANYTHING ELSE**
     for gid, g in pairs(Dubz.Gangs) do
-        print("[Dubz Gangs] Normalize on load:", gid)
-        NormalizeGraffiti(g)
+        if not SanitizeGang(gid, g) then
+            Dubz.Gangs[gid] = nil
+        end
     end
 
-    -- Rebuild GangByMember AFTER graffiti is valid
-    timer.Simple(0, function()
-        print("[Dubz Gangs] Rebuilding GangByMember index…")
-
-        Dubz.GangByMember = {}
-        for gid, g in pairs(Dubz.Gangs) do
-            if g.members then
-                for sid,_ in pairs(g.members) do
-                    Dubz.GangByMember[sid] = gid
-                    print(" • Member", sid, "→ Gang", gid)
-                end
-            end
-        end
-    end)
+    RebuildGangByMember()
+    RefreshGangNWForAll()
 end
 hook.Add("Initialize","Dubz_Gangs_Load_Fixed", function()
     timer.Simple(1, function()
-        print("[Dubz Gangs] Loading gang data…")
         LoadGangs()
-        print("[Dubz Gangs] Loaded", table.Count(Dubz.Gangs), "gangs.")
+        print("[Dubz Gangs] Loaded", table.Count(Dubz.Gangs or {}), "gangs.")
     end)
 end)
 
--- Ensures graffiti table exists and has all required fields
-local function NormalizeGraffiti(g)
-    g.graffiti = g.graffiti or {}
-
-    local name = g.name or "Gang"
-
-    g.graffiti.text   = g.graffiti.text   or name
-    g.graffiti.font   = g.graffiti.font   or "Trebuchet24"
-    g.graffiti.scale  = tonumber(g.graffiti.scale) or 1
-    g.graffiti.effect = g.graffiti.effect or "Clean"
-
-    g.graffiti.fontScaled =
-        g.graffiti.fontScaled or
-        ("DubzGraffiti_Font_" .. math.floor((g.graffiti.scale or 1) * 100))
-
-    local c = g.color or { r=255, g=255, b=255 }
-    g.graffiti.color = {
-        r = c.r or 255,
-        g = c.g or 255,
-        b = c.b or 255
-    }
-end
 
 -- Sync helpers
 local function SendFullSync(ply)
