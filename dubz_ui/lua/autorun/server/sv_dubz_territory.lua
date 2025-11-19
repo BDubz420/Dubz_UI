@@ -43,16 +43,35 @@ local function SpawnSavedTerritories()
         return
     end
 
+    local function toVector(tbl)
+        if istable(tbl) then
+            if tbl.x then return Vector(tbl.x, tbl.y, tbl.z) end
+            if tbl[1] then return Vector(tbl[1], tbl[2], tbl[3]) end
+        end
+        return Vector(0,0,0)
+    end
+
+    local function toAngle(tbl)
+        if istable(tbl) then
+            if tbl.p then return Angle(tbl.p, tbl.y, tbl.r) end
+            if tbl[1] then return Angle(tbl[1], tbl[2], tbl[3]) end
+        end
+        return Angle(0,0,0)
+    end
+
     local count = 0
     for _, info in ipairs(data) do
-        local pos = info.pos or {}
-        local ang = info.ang or {}
+        local pos = toVector(info.pos)
+        local ang = toAngle(info.ang)
         local ent = ents.Create(class)
         if IsValid(ent) then
-            ent:SetPos(Vector(pos.x or 0, pos.y or 0, pos.z or 0))
-            ent:SetAngles(Angle(ang.p or 0, ang.y or 0, ang.r or 0))
+            ent:SetPos(pos)
+            ent:SetAngles(ang)
             ent:Spawn()
             ent:Activate()
+            if info.name and ent.SetTerritoryName then
+                ent:SetTerritoryName(info.name)
+            end
             count = count + 1
         end
     end

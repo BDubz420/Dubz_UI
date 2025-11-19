@@ -18,13 +18,19 @@ local function SendAction(tbl)
 end
 
 local function GetMyGang()
+    if Dubz.GetMyGang then
+        return Dubz.GetMyGang()
+    end
     return (Dubz.MyGangId ~= "" and Dubz.Gangs[Dubz.MyGangId]) or nil
 end
 
 local function IsLeaderC()
+    if Dubz.IsLeaderC then
+        return Dubz.IsLeaderC()
+    end
     local g = GetMyGang()
     if not g then return false end
-    return Dubz.MyRank >= Dubz.GangRanks.Leader
+    return (Dubz.MyRank or 0) >= Dubz.GangRanks.Leader
 end
 
 -- Simple UI refresh helper so the active panel can re-layout when data changes
@@ -50,6 +56,23 @@ local function GetGangTerritories(gid)
 
     local list = {}
 
+    local g = Dubz.Gangs and Dubz.Gangs[gid]
+    if g and istable(g.territories) then
+        for _, info in pairs(g.territories) do
+            local name = tostring(info and info.name or "")
+            if name ~= "" then
+                table.insert(list, name)
+            end
+        end
+    end
+
+    if #list > 0 then
+        table.sort(list, function(a, b)
+            return string.lower(a) < string.lower(b)
+        end)
+        return list
+    end
+
     -- Use the graffiti territory entity as the source of truth
     for _, ent in ipairs(ents.FindByClass("ent_dubz_graffiti_spot")) do
         if IsValid(ent) and ent.GetOwnerGangId and ent:GetOwnerGangId() == gid then
@@ -71,52 +94,24 @@ local function GetGangTerritories(gid)
     return list
 end
 
---------------------------------------------------------
--- Networking
---------------------------------------------------------
-net.Receive("Dubz_Gang_FullSync", function()
-    Dubz.Gangs = net.ReadTable() or {}
+local lastRevision = -1
+
+local function QueueMenuRefresh(force)
+    local rev = (Dubz and Dubz.GangRevision) or 0
+    if not force and rev == lastRevision then return end
+    lastRevision = rev
+
     RefreshGangUI()
-end)
-
-net.Receive("Dubz_Gang_MyStatus", function()
-    Dubz.MyGangId = net.ReadString() or ""
-    Dubz.MyRank   = net.ReadUInt(3) or 0
-    RefreshGangUI()
-end)
-
-net.Receive("Dubz_Gang_Update", function()
-    local gid  = net.ReadString()
-    local data = net.ReadTable() or {}
-
-    Dubz.Gangs = Dubz.Gangs or {}
-    if data and data.id then
-        Dubz.Gangs[gid] = data
-    else
-        Dubz.Gangs[gid] = nil
+    if Dubz and Dubz.RequestMenuRefresh then
+        Dubz.RequestMenuRefresh("gangs")
     end
+end
 
-    RefreshGangUI()
+hook.Add("Dubz_Gangs_FullSync", "Dubz_Gangs_Tab_FullRefresh", function()
+    QueueMenuRefresh(true)
 end)
-
-net.Receive("Dubz_Gang_Invite", function()
-    local gid   = net.ReadString()
-    local gname = net.ReadString() or "Gang"
-    local from  = net.ReadString() or "Leader"
-
-    Derma_Query(from .. " invited you to join '"..gname.."'", "Gang Invite",
-        "Accept", function()
-            net.Start("Dubz_Gang_Action")
-            net.WriteTable({cmd="accept_invite"})
-            net.SendToServer()
-        end,
-        "Decline", function()
-            net.Start("Dubz_Gang_Action")
-            net.WriteTable({cmd="decline_invite"})
-            net.SendToServer()
-        end
-    )
-end)
+hook.Add("Dubz_Gangs_MyStatus", "Dubz_Gangs_Tab_StatusRefresh", QueueMenuRefresh)
+hook.Add("Dubz_Gangs_GangUpdated", "Dubz_Gangs_Tab_UpdateRefresh", QueueMenuRefresh)
 
 --------------------------------------------------------
 -- UI drawing helpers
@@ -1216,6 +1211,8 @@ end
 --------------------------------------------------------
 -- Tab Registration
 --------------------------------------------------------
+Dubz._GangTabSynced = Dubz._GangTabSynced or false
+
 Dubz.RegisterTab("gangs", Dubz.Config.Gangs.TabTitle or "Gangs", "users", function(parent)
     if not (Dubz.Config.Gangs and Dubz.Config.Gangs.Enabled) then return end
 
@@ -1324,7 +1321,9 @@ Dubz.RegisterTab("gangs", Dubz.Config.Gangs.TabTitle or "Gangs", "users", functi
         self:SetTall(math.max(y + 32, parent:GetTall() + 32))
     end
 
-    -- Request fresh sync when opened
-    net.Start("Dubz_Gang_RequestSync")
-    net.SendToServer()
+    if not Dubz._GangTabSynced then
+        net.Start("Dubz_Gang_RequestSync")
+        net.SendToServer()
+        Dubz._GangTabSynced = true
+    end
 end)
