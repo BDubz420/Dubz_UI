@@ -7,6 +7,50 @@ Dubz = Dubz or {}
 Dubz.DoorUI = Dubz.DoorUI or {}
 
 local DoorUI = Dubz.DoorUI
+DoorUI.State = DoorUI.State or setmetatable({}, { __mode = "k" })
+local DoorStates = DoorUI.State
+
+--------------------------------------------------------
+-- Networked door state cache
+--------------------------------------------------------
+
+local function CacheDoorOwner(data, owner)
+    if IsValid(owner) and owner:IsPlayer() then
+        data.owner = owner
+        data.ownerSid64 = owner:SteamID64() or data.ownerSid64
+        data.ownerName = owner:Nick() or data.ownerName
+    end
+end
+
+net.Receive("Dubz_DoorUI_DoorUpdated", function()
+    local door = net.ReadEntity()
+    if not IsValid(door) then return end
+
+    local owner = net.ReadEntity()
+    local ownerSid = net.ReadString()
+    local ownerName = net.ReadString()
+    local title = net.ReadString()
+    local locked = net.ReadBool()
+    local nonown = net.ReadBool()
+
+    local data = DoorStates[door] or {}
+    data.ownerSid64 = ownerSid ~= "" and ownerSid or data.ownerSid64
+    data.ownerName = ownerName ~= "" and ownerName or data.ownerName
+    data.title     = title
+    data.locked    = locked
+    data.nonown    = nonown
+    data.updated   = CurTime()
+
+    CacheDoorOwner(data, owner)
+
+    DoorStates[door] = data
+end)
+
+hook.Add("EntityRemoved", "Dubz_DoorUI_ClearState", function(ent)
+    if DoorStates[ent] then
+        DoorStates[ent] = nil
+    end
+end)
 
 --------------------------------------------------------
 -- Helpers / detection
@@ -37,12 +81,38 @@ local function IsDoor(ent)
 end
 
 local function GetOwner(ent)
+    local data = DoorStates[ent]
+    if data then
+        if IsValid(data.owner) then
+            return data.owner
+        end
+
+        if data.ownerSid64 and data.ownerSid64 ~= "" then
+            for _, ply in ipairs(player.GetAll()) do
+                if ply:SteamID64() == data.ownerSid64 then
+                    CacheDoorOwner(data, ply)
+                    return ply
+                end
+            end
+        end
+    end
+
     if not ent.getDoorOwner then return nil end
     local owner = ent:getDoorOwner()
     if IsValid(owner) and owner:IsPlayer() then
         return owner
     end
     return nil
+end
+
+local function GetOwnerName(ent)
+    local data = DoorStates[ent]
+    if data and data.ownerName and data.ownerName ~= "" then
+        return data.ownerName
+    end
+
+    local owner = GetOwner(ent)
+    return IsValid(owner) and owner:Nick() or nil
 end
 
 local function GetCoOwners(ent)
@@ -63,6 +133,11 @@ local function GetCoOwners(ent)
 end
 
 local function IsNonOwnable(ent)
+    local data = DoorStates[ent]
+    if data and data.nonown ~= nil then
+        return data.nonown
+    end
+
     if ent.getKeysNonOwnable then
         return ent:getKeysNonOwnable()
     end
@@ -91,10 +166,24 @@ local function IsOwnedByLocal(ent)
 end
 
 local function GetTitle(ent)
+    local data = DoorStates[ent]
+    if data and data.title then
+        return data.title
+    end
+
     if ent.getKeysTitle then
         return ent:getKeysTitle() or ""
     end
     return ""
+end
+
+local function GetLockedState(ent)
+    local data = DoorStates[ent]
+    if data and data.locked ~= nil then
+        return data.locked
+    end
+
+    return ent:GetInternalVariable("m_bLocked") or false
 end
 
 local function GetDoorGroups()
@@ -246,9 +335,9 @@ local function DrawDoorHUD()
     ----------------------------------------
     local owner  = GetOwner(door)
     local title  = GetTitle(door)
-    local locked = door:GetInternalVariable("m_bLocked") or false
+    local locked = GetLockedState(door)
 
-    local ownerText = owner and owner:Nick() or "Unowned"
+    local ownerText = GetOwnerName(door) or "Unowned"
     local titleText = (title ~= "" and title) or ""
 
     ----------------------------------------
@@ -506,7 +595,8 @@ function OpenDoorMenu(ent)
     frame.Paint = function(self, w, h)
         DrawBubble(0,0,w,h,Color(0,0,0,180))
         draw.SimpleText("Door", FONT_TITLE, 14, 8, ACCENT)
-        draw.SimpleText(owner and ("Owner: " .. owner:Nick()) or "Unowned",
+        local ownerName = GetOwnerName(ent)
+        draw.SimpleText(ownerName and ("Owner: " .. ownerName) or "Unowned",
                         FONT_BODY, 14, 34, GRAY)
     end
 

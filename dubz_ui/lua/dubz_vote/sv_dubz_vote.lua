@@ -1,5 +1,3 @@
-
---[[
 if not Dubz or not Dubz.Vote then return end
 
 util.AddNetworkString("Dubz_Vote_Start")
@@ -9,9 +7,98 @@ util.AddNetworkString("Dubz_Vote_End")
 Dubz.Vote.Active = Dubz.Vote.Active or {}
 Dubz.Vote.Types  = Dubz.Vote.Types or {}  -- named handlers (job, gang, etc)
 
+local function GetRemainingTime(vote)
+    if not vote or not vote.endTime then return 0 end
+    return math.Clamp(math.ceil(math.max(0, vote.endTime - CurTime())), 0, 255)
+end
+
+local function SendVoteStart(vote, target)
+    if not vote then return end
+
+    net.Start("Dubz_Vote_Start")
+        net.WriteString(vote.id)
+        net.WriteString(vote.question)
+        net.WriteUInt(#vote.options, 8)
+        for _, opt in ipairs(vote.options) do
+            net.WriteString(opt)
+        end
+        net.WriteUInt(math.max(1, GetRemainingTime(vote)), 8)
+    if IsValid(target) then
+        net.Send(target)
+    else
+        net.Broadcast()
+    end
+end
+
+local function BroadcastVoteEnd(id, counts, winner, cancelled)
+    net.Start("Dubz_Vote_End")
+        net.WriteString(id)
+        net.WriteUInt(#counts, 8)
+        for _, c in ipairs(counts) do
+            net.WriteUInt(math.Clamp(c, 0, 4095), 12)
+        end
+        net.WriteUInt(math.Clamp(winner, 0, 255), 8)
+        net.WriteBool(cancelled and true or false)
+    net.Broadcast()
+end
+
+local function FinishVote(id, vote, opts)
+    Dubz.Vote.Active[id] = nil
+    if not vote then return end
+
+    local counts = {}
+    for i = 1, #vote.options do counts[i] = 0 end
+
+    for ply, choice in pairs(vote.votes or {}) do
+        if IsValid(ply) and counts[choice] ~= nil then
+            counts[choice] = counts[choice] + 1
+        end
+    end
+
+    local topCount = -1
+    local winningIndex = 0
+    local tied = false
+    for i, c in ipairs(counts) do
+        if c > topCount then
+            winningIndex = i
+            topCount = c
+            tied = false
+        elseif c == topCount then
+            tied = true
+        end
+    end
+
+    if topCount <= 0 or tied then
+        winningIndex = 0
+    end
+
+    local cancelled = opts and opts.cancelled
+    if cancelled then
+        Dubz.Vote.Log(string.format("Vote '%s' cancelled (%s)", id, opts and opts.reason or "cancelled"))
+    else
+        Dubz.Vote.Log(string.format("Vote '%s' finished, winner = %d (%s)", id, winningIndex, vote.options[winningIndex] or "none"))
+    end
+
+    if not cancelled then
+        local handler = Dubz.Vote.Types[vote.vtype or "generic"]
+        if handler and isfunction(handler.OnFinish) then
+            handler.OnFinish(vote, counts, winningIndex)
+        end
+    end
+
+    BroadcastVoteEnd(id, counts, winningIndex, cancelled)
+end
+
 -- Register a vote type with a finish callback
 function Dubz.Vote.RegisterType(name, def)
     Dubz.Vote.Types[name] = def
+end
+
+function Dubz.Vote.Cancel(id, reason)
+    local vote = Dubz.Vote.Active[id]
+    if not vote then return false end
+    FinishVote(id, vote, { cancelled = true, reason = reason })
+    return true
 end
 
 -- Start a vote
@@ -24,33 +111,36 @@ end
 --   payload = table (custom stuff)
 -- }
 function Dubz.Vote.Start(id, data)
+    if not isstring(id) or id == "" then return end
     if not data or not istable(data) then return end
     if not data.question or not istable(data.options) or #data.options == 0 then return end
 
-    local duration = tonumber(data.duration) or Dubz.Vote.Config.DefaultDuration
+    local options = {}
+    for _, opt in ipairs(data.options) do
+        options[#options + 1] = tostring(opt or "Option")
+    end
+
+    if Dubz.Vote.Active[id] then
+        Dubz.Vote.Cancel(id, "restarted")
+    end
+
+    local duration = tonumber(data.duration) or Dubz.Vote.Config.DefaultDuration or 15
+    duration = math.Clamp(math.floor(duration), 5, 255)
+
     Dubz.Vote.Active[id] = {
         id       = id,
-        question = data.question,
-        options  = data.options,
+        question = tostring(data.question),
+        options  = options,
         endTime  = CurTime() + duration,
         votes    = {},           -- [ply] = choiceIndex
         duration = duration,
         vtype    = data.type or "generic",
-        payload  = data.payload or {}
+        payload  = data.payload or {},
+        started  = CurTime()
     }
 
     Dubz.Vote.Log("Started vote '" .. id .. "' (" .. data.question .. ")")
-
-    -- Send to all players (you can filter later if needed)
-    net.Start("Dubz_Vote_Start")
-        net.WriteString(id)
-        net.WriteString(data.question)
-        net.WriteUInt(#data.options, 8)
-        for _, opt in ipairs(data.options) do
-            net.WriteString(opt)
-        end
-        net.WriteUInt(duration, 8)
-    net.Broadcast()
+    SendVoteStart(Dubz.Vote.Active[id])
 end
 
 -- Player cast vote
@@ -60,50 +150,11 @@ net.Receive("Dubz_Vote_Cast", function(_, ply)
 
     local v = Dubz.Vote.Active[id]
     if not v then return end
+    if CurTime() >= v.endTime then return end
     if choice < 1 or choice > #v.options then return end
 
     v.votes[ply] = choice
 end)
-
--- Tally + finish
-local function FinishVote(id, v)
-    Dubz.Vote.Active[id] = nil
-    if not v then return end
-
-    -- tally
-    local counts = {}
-    for i = 1, #v.options do counts[i] = 0 end
-    for ply, choice in pairs(v.votes or {}) do
-        counts[choice] = (counts[choice] or 0) + 1
-    end
-
-    -- find winner
-    local winningIndex, winningCount = 0, -1
-    for i, c in ipairs(counts) do
-        if c > winningCount then
-            winningCount = c
-            winningIndex = i
-        end
-    end
-
-    Dubz.Vote.Log(string.format("Vote '%s' finished, winner = %d (%s)", id, winningIndex, v.options[winningIndex] or "none"))
-
-    -- call type handler
-    local handler = Dubz.Vote.Types[v.vtype or "generic"]
-    if handler and isfunction(handler.OnFinish) then
-        handler.OnFinish(v, counts, winningIndex)
-    end
-
-    -- notify clients
-    net.Start("Dubz_Vote_End")
-        net.WriteString(id)
-        net.WriteUInt(#counts, 8)
-        for _, c in ipairs(counts) do
-            net.WriteUInt(c, 12)
-        end
-        net.WriteUInt(winningIndex, 8)
-    net.Broadcast()
-end
 
 -- Main Think hook
 hook.Add("Think", "Dubz_Vote_Think", function()
@@ -111,6 +162,23 @@ hook.Add("Think", "Dubz_Vote_Think", function()
         if CurTime() >= v.endTime then
             FinishVote(id, v)
         end
+    end
+end)
+
+hook.Add("PlayerInitialSpawn", "Dubz_Vote_ResendActive", function(ply)
+    timer.Simple(1, function()
+        if not IsValid(ply) then return end
+        for _, v in pairs(Dubz.Vote.Active) do
+            if GetRemainingTime(v) > 0 then
+                SendVoteStart(v, ply)
+            end
+        end
+    end)
+end)
+
+hook.Add("PlayerDisconnected", "Dubz_Vote_RemoveVotes", function(ply)
+    for _, v in pairs(Dubz.Vote.Active) do
+        v.votes[ply] = nil
     end
 end)
 
@@ -200,4 +268,3 @@ if DarkRP then
         })
     end)
 end
---]]

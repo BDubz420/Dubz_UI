@@ -22,6 +22,18 @@ if SERVER then
         "dubz_vote/sh_dubz_vote.lua",
         "dubz_notifications/cl_notifications.lua"
     }
+
+    -- Ensure every theme definition is networked to clients so the runtime loader can include them.
+    if file and file.Find then
+        local themeFiles = file.Find("dubz_ui/themes/*.lua", "LUA") or {}
+        table.sort(themeFiles, function(a, b) return a < b end)
+        for _, fname in ipairs(themeFiles) do
+            table.insert(files, "dubz_ui/themes/" .. fname)
+        end
+    else
+        table.insert(files, "dubz_ui/themes/transparent_black.lua")
+    end
+
     for _, p in ipairs(files) do AddCSLuaFile(p) end
 
     --------------------------------------------------------
