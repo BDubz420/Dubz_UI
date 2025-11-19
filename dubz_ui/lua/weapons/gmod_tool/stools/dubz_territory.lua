@@ -213,8 +213,8 @@ if SERVER then
             local ang = ent:GetAngles()
 
             table.insert(saved, {
-                pos  = {pos.x, pos.y, pos.z},
-                ang  = {ang.p,  ang.y,  ang.r},
+                pos  = {x = pos.x, y = pos.y, z = pos.z},
+                ang  = {p = ang.p, y = ang.y, r = ang.r},
                 name = ent.GetTerritoryName and ent:GetTerritoryName() or ""
             })
         end
