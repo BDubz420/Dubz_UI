@@ -4,6 +4,7 @@
 --========================================--
 
 if not Dubz then return end
+DarkRP = DarkRP or {}
 if IsValid(Dubz_NotifyContainer) then Dubz_NotifyContainer:Remove() end
 
 local active = {}

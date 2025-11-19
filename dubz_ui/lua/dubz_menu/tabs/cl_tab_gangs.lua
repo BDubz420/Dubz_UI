@@ -1203,6 +1203,8 @@ end
 --------------------------------------------------------
 -- Tab Registration
 --------------------------------------------------------
+Dubz._GangTabSynced = Dubz._GangTabSynced or false
+
 Dubz.RegisterTab("gangs", Dubz.Config.Gangs.TabTitle or "Gangs", "users", function(parent)
     if not (Dubz.Config.Gangs and Dubz.Config.Gangs.Enabled) then return end
 
@@ -1311,7 +1313,9 @@ Dubz.RegisterTab("gangs", Dubz.Config.Gangs.TabTitle or "Gangs", "users", functi
         self:SetTall(math.max(y + 32, parent:GetTall() + 32))
     end
 
-    -- Request fresh sync when opened
-    net.Start("Dubz_Gang_RequestSync")
-    net.SendToServer()
+    if not Dubz._GangTabSynced then
+        net.Start("Dubz_Gang_RequestSync")
+        net.SendToServer()
+        Dubz._GangTabSynced = true
+    end
 end)

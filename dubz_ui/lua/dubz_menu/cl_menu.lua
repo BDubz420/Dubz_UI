@@ -150,6 +150,21 @@ local function closeMenu()
     gui.EnableScreenClicker(false)
     isOpen = false
     Dubz.MenuLocked = false
+    stickyInputLock = false
+end
+
+function Dubz.RequestMenuRefresh(tabId)
+    if not isOpen then return end
+    if tabId and Dubz.MenuActiveTab ~= tabId then return end
+    if refreshQueued then return end
+    refreshQueued = true
+    timer.Simple(0, function()
+        refreshQueued = false
+        if not isOpen or not switchTo then return end
+        if tabId and Dubz.MenuActiveTab ~= tabId then return end
+        if not Dubz.MenuActiveTab then return end
+        switchTo(Dubz.MenuActiveTab, true)
+    end)
 end
 
 function Dubz.RequestMenuRefresh(tabId)
