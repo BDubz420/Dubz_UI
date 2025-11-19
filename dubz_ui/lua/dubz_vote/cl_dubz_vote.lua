@@ -10,31 +10,24 @@ local function LayoutContainer(panel)
     panel:SetPos(ScrW() - 420, 0)
 end
 
-local function CanBuildContainer()
-    if not (vgui and vgui.Create and vgui.GetWorldPanel) then return false end
-    local wp = vgui.GetWorldPanel and vgui.GetWorldPanel()
-    if not IsValid(wp) then return false end
-    return true
-end
-
 local function EnsureVoteContainer()
     if IsValid(DubzVotingContainer) then
         return DubzVotingContainer
     end
 
-    if not CanBuildContainer() or not IsValid(LocalPlayer()) then
+    if not (vgui and vgui.Create) then return end
+
+    local cont = vgui.Create("DPanel")
+    if not IsValid(cont) then
         if not Dubz.Vote._containerRetry then
             Dubz.Vote._containerRetry = true
-            timer.Simple(0.25, function()
+            timer.Simple(0, function()
                 Dubz.Vote._containerRetry = nil
                 EnsureVoteContainer()
             end)
         end
         return
     end
-
-    local cont = vgui.Create("DPanel")
-    if not IsValid(cont) then return end
 
     LayoutContainer(cont)
     cont:SetMouseInputEnabled(true)
@@ -53,23 +46,25 @@ local function EnsureVoteContainer()
     end)
 
     DubzVotingContainer = cont
-    FlushPendingVotes()
     return cont
 end
 
 hook.Add("InitPostEntity", "DubzVoteEnsureContainer", EnsureVoteContainer)
+local VotePanels = {}  -- [id] = panel
 
-local PendingVotes = {}
+-- Right side container for votes (like your old one)
+if IsValid(DubzVotingContainer) then DubzVotingContainer:Remove() end
 
-local function FlushPendingVotes()
-    if not next(PendingVotes) then return end
-    local cont = EnsureVoteContainer()
-    if not IsValid(cont) then return end
+local cont = vgui.Create("DPanel")
+cont:SetSize(400, ScrH())
+cont:SetPos(ScrW() - 420, 0)
+cont:SetMouseInputEnabled(true)
+cont:SetKeyboardInputEnabled(false)
+cont:SetZPos(32767)
+DubzVotingContainer = cont
 
-    for id, data in pairs(PendingVotes) do
-        PendingVotes[id] = nil
-        Dubz.Vote.OpenPanel(data.id, data.question, data.options, data.duration, true)
-    end
+function cont:Paint(w, h)
+    draw.SimpleText("Press F3 to use cursor","DubzHUD_Small",w / 2, 16,Color(220, 220, 220, 220),TEXT_ALIGN_CENTER)
 end
 
 local function DrawBubble(x, y, w, h, col)
@@ -81,26 +76,13 @@ local function DrawBubble(x, y, w, h, col)
 end
 
 -- Open a vote panel
-function Dubz.Vote.OpenPanel(id, question, options, duration, suppressQueue)
+function Dubz.Vote.OpenPanel(id, question, options, duration)
     local container = EnsureVoteContainer()
     if not IsValid(container) then
-        if suppressQueue then return end
-        PendingVotes[id] = {
-            id       = id,
-            question = question,
-            options  = (istable(options) and table.Copy(options)) or {},
-            duration = duration
-        }
-
-        if not timer.Exists("Dubz_Vote_PendingRetry") then
-            timer.Create("Dubz_Vote_PendingRetry", 0.5, 0, function()
-                if not next(PendingVotes) then
-                    timer.Remove("Dubz_Vote_PendingRetry")
-                    return
-                end
-                FlushPendingVotes()
-            end)
-        end
+        timer.Simple(0, function()
+            if VotePanels[id] then return end
+            Dubz.Vote.OpenPanel(id, question, options, duration)
+        end)
         return
     end
 
@@ -109,6 +91,7 @@ function Dubz.Vote.OpenPanel(id, question, options, duration, suppressQueue)
     if IsValid(VotePanels[id]) then VotePanels[id]:Remove() end
 
     local p = vgui.Create("DPanel", container)
+    local p = vgui.Create("DPanel", DubzVotingContainer)
     p:SetSize(360, 190)
     p:SetAlpha(0)
     p.Duration = math.max(duration or 15, 1)
@@ -118,6 +101,9 @@ function Dubz.Vote.OpenPanel(id, question, options, duration, suppressQueue)
 
     local parentW = container:GetWide()
     local offsetY = 50 + (#container:GetChildren() - 1) * 12
+
+    local parentW = DubzVotingContainer:GetWide()
+    local offsetY = 50 + (#DubzVotingContainer:GetChildren() - 1) * 12
 
     p:SetPos(parentW, offsetY)
     p:MoveTo(parentW - 360 - 20, offsetY, 0.25, 0, 0.2)
@@ -131,6 +117,18 @@ function Dubz.Vote.OpenPanel(id, question, options, duration, suppressQueue)
         self:AlphaTo(0, 0.2, 0, function()
             if IsValid(self) then self:Remove() end
         end)
+    end
+
+    function p:OnRemove()
+        if VotePanels[self.Id] == self then
+            VotePanels[self.Id] = nil
+        end
+    end
+
+    function p:OnRemove()
+        if VotePanels[self.Id] == self then
+            VotePanels[self.Id] = nil
+        end
     end
 
     function p:OnRemove()
