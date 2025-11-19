@@ -1,8 +1,4 @@
-Dubz = Dubz or {}
-Dubz.Vote = Dubz.Vote or {}
-Dubz.Vote.Active = Dubz.Vote.Active or {}
-Dubz.Vote.Types  = Dubz.Vote.Types or {}
-Dubz.Vote.Config = Dubz.Vote.Config or {}
+if not Dubz or not Dubz.Vote then return end
 
 util.AddNetworkString("Dubz_Vote_Start")
 util.AddNetworkString("Dubz_Vote_Cast")
@@ -116,6 +112,10 @@ local function FinishVote(id, vote, opts)
         summary = string.format("Vote '%s' finished, winner = %d (%s)", id, winningIndex, vote.options[winningIndex] or "none")
         Dubz.Vote.Log(summary)
         if Dubz.Log then Dubz.Log(summary, "INFO", "VOTE") end
+    if cancelled then
+        Dubz.Vote.Log(string.format("Vote '%s' cancelled (%s)", id, opts and opts.reason or "cancelled"))
+    else
+        Dubz.Vote.Log(string.format("Vote '%s' finished, winner = %d (%s)", id, winningIndex, vote.options[winningIndex] or "none"))
     end
 
     if not cancelled then

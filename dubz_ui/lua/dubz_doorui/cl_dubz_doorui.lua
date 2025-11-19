@@ -178,17 +178,6 @@ local function GetTitle(ent)
 end
 
 local function GetLockedState(ent)
-    if not IsValid(ent) then return false end
-
-    if ent.getKeysLocked then
-        local ok, locked = pcall(function() return ent:getKeysLocked() end)
-        if ok then
-            local data = DoorStates[ent]
-            if data then data.locked = locked end
-            return locked and true or false
-        end
-    end
-
     local data = DoorStates[ent]
     if data and data.locked ~= nil then
         return data.locked
