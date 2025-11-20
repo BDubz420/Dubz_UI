@@ -12,35 +12,83 @@ if SERVER then
     util.AddNetworkString("Dubz_DoorUI_SetGroup")
 
     util.AddNetworkString("Dubz_DoorUI_DoorUpdated")
-    -- sends: door, owner, title, locked, nonownable
+    -- sends: door, owner entity, owner sid64, owner name, title, locked, nonownable
 
 
     ------------------------------------------------------------
     -- HELPERS
     ------------------------------------------------------------
-    local function SendDoorState(door)
+    local function IsDoor(ent)
+        if not IsValid(ent) then return false end
+        if ent.isDoor then
+            local ok, res = pcall(function() return ent:isDoor() end)
+            if ok and res then return true end
+        end
+
+        local class = string.lower(ent:GetClass() or "")
+        return class:find("door", 1, true) ~= nil
+            or class:find("prop_door", 1, true) ~= nil
+            or class:find("func_door", 1, true) ~= nil
+    end
+
+    local function SendDoorState(arg1, arg2)
+        local door = arg1
+        local target = arg2
+
+        if not IsDoor(arg1) then
+            if IsDoor(arg2) then
+                door = arg2
+                target = nil
+            else
+                return
+            end
+        end
+
         if not IsValid(door) then return end
+
+        local owner = (door.getDoorOwner and door:getDoorOwner()) or NULL
+        if not IsValid(owner) or not owner:IsPlayer() then
+            owner = NULL
+        end
+
+        local ownerSid = IsValid(owner) and owner:SteamID64() or ""
+        local ownerName = IsValid(owner) and owner:Nick() or ""
+
+        local title = (door.getKeysTitle and door:getKeysTitle()) or ""
+
+        local locked = false
+        if door.getKeysLocked then
+            locked = door:getKeysLocked()
+        end
+
+        local nonown = false
+        if door.getKeysNonOwnable then
+            nonown = door:getKeysNonOwnable()
+        end
 
         net.Start("Dubz_DoorUI_DoorUpdated")
             net.WriteEntity(door)
-            net.WriteEntity(door:getDoorOwner() or NULL)
-            net.WriteString(door:getKeysTitle() or "")
-
-            -- FIXED: proper DarkRP lock sync
-            local locked = false
-            if door.getKeysLocked then
-                locked = door:getKeysLocked()
-            end
+            net.WriteEntity(owner)
+            net.WriteString(ownerSid or "")
+            net.WriteString(ownerName or "")
+            net.WriteString(title)
             net.WriteBool(locked)
-
-            -- Send non-ownable flag to client
-            local nonown = false
-            if door.getKeysNonOwnable then
-                nonown = door:getKeysNonOwnable()
-            end
             net.WriteBool(nonown)
 
-        net.Broadcast()
+        if IsValid(target) and target:IsPlayer() then
+            net.Send(target)
+        else
+            net.Broadcast()
+        end
+    end
+
+    local function SendAllDoorStates(ply)
+        if not IsValid(ply) then return end
+        for _, ent in ipairs(ents.GetAll()) do
+            if IsDoor(ent) then
+                SendDoorState(ent, ply)
+            end
+        end
     end
 
 
@@ -94,6 +142,12 @@ if SERVER then
     hook.Add("onDoorBought",          "DubzDoorUI_Sync", SendDoorState)
     hook.Add("onKeysTitleChanged",    "DubzDoorUI_Sync", SendDoorState)
     hook.Add("onKeysNonOwnableValueChanged", "DubzDoorUI_Sync", SendDoorState)
+
+    hook.Add("PlayerInitialSpawn", "DubzDoorUI_InitSync", function(ply)
+        timer.Simple(2, function()
+            SendAllDoorStates(ply)
+        end)
+    end)
 
 end
 
