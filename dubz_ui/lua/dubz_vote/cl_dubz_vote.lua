@@ -137,6 +137,12 @@ function Dubz.Vote.OpenPanel(id, question, options, duration)
         end
     end
 
+    function p:OnRemove()
+        if VotePanels[self.Id] == self then
+            VotePanels[self.Id] = nil
+        end
+    end
+
     function p:Paint(w, h)
         DrawBubble(0, 0, w, h, Color(25,25,25,240))
 
