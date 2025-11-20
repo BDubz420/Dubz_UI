@@ -135,9 +135,18 @@ function ENT:Use(ply)
 end
 
 function ENT:Think()
+    local function ResetClientProgress(target)
+        if not IsValid(target) then return end
+        net.Start("Dubz_Graffiti_ClaimProgress")
+            net.WriteEntity(self)
+            net.WriteFloat(-1)
+        net.Send(target)
+    end
+
     for ply, data in pairs(self.IsClaiming) do
 
         if not IsValid(ply) then
+            ResetClientProgress(ply)
             self.IsClaiming[ply] = nil
             continue
         end
@@ -145,11 +154,13 @@ function ENT:Think()
         -- must keep aiming at entity while holding E
         local tr = ply:GetEyeTrace()
         if tr.Entity ~= self then
+            ResetClientProgress(ply)
             self.IsClaiming[ply] = nil
             continue
         end
 
         if not ply:KeyDown(IN_USE) then
+            ResetClientProgress(ply)
             self.IsClaiming[ply] = nil
             continue
         end
@@ -223,7 +234,14 @@ net.Receive("Dubz_Graffiti_ClaimProgress", function()
     local ent = net.ReadEntity()
     if not IsValid(ent) then return end
 
-    ent.ClaimProg = net.ReadFloat()
+    local prog = net.ReadFloat()
+    if prog and prog < 0 then
+        ent.ClaimProg = nil
+        ent.ProgTime  = nil
+        return
+    end
+
+    ent.ClaimProg = prog
     ent.ProgTime  = CurTime()
 end)
 
