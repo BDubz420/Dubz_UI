@@ -115,6 +115,16 @@ local function GetOwnerName(ent)
     return IsValid(owner) and owner:Nick() or nil
 end
 
+local function GetOwnerName(ent)
+    local data = DoorStates[ent]
+    if data and data.ownerName and data.ownerName ~= "" then
+        return data.ownerName
+    end
+
+    local owner = GetOwner(ent)
+    return IsValid(owner) and owner:Nick() or nil
+end
+
 local function GetCoOwners(ent)
     if not ent.getKeysCoOwners then return {} end
 
@@ -189,6 +199,15 @@ local function GetLockedState(ent)
         end
     end
 
+    local data = DoorStates[ent]
+    if data and data.locked ~= nil then
+        return data.locked
+    end
+
+    return ent:GetInternalVariable("m_bLocked") or false
+end
+
+local function GetLockedState(ent)
     local data = DoorStates[ent]
     if data and data.locked ~= nil then
         return data.locked
