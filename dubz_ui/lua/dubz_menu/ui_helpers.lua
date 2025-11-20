@@ -26,22 +26,7 @@ if not Dubz.Notify then
     end
 end
 
-function Dubz.Log(msg, level)
-    Dubz.Logs = Dubz.Logs or {}
-    local time = os.date("%H:%M:%S")
-    level = string.upper(level or "INFO")
-    table.insert(Dubz.Logs, 1, {time=time, level=level, msg=tostring(msg)})
-    local keep = (Dubz.Config and Dubz.Config.MaxLogs) or 800
-    while #Dubz.Logs > keep do table.remove(Dubz.Logs) end
-    if Dubz.Config and Dubz.Config.SaveLogsToFile then
-        if not file.Exists("dubz_ui","DATA") then file.CreateDir("dubz_ui") end
-        file.Append("dubz_ui/logs.txt", string.format("[%s] [%s] %s\n", time, level, msg))
-    end
-    if Dubz.Config and Dubz.Config.DevMode then
-        local col = level=="ERROR" and Color(255,80,80) or (level=="WARN" and Color(255,220,0) or Color(60,255,90))
-        MsgC(col, "[DubzUI]["..level.."] ", Color(200,200,200), msg.."\n")
-    end
-end
+-- logging is handled in dubz_shared/sh_dubz_log.lua
 
 function Dubz.GetAccentColor()
     if Dubz.Config and Dubz.Config.AccentRainbow then
