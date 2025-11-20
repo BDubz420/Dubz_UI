@@ -8,21 +8,12 @@ local function EnsureChatPanel()
     if IsValid(chatPanel) then return chatPanel end
     chatPanel = vgui.Create("DPanel")
     chatPanel:SetSize(420, 220)
-    chatPanel:SetMouseInputEnabled(true)
-    chatPanel:SetKeyboardInputEnabled(true)
+    chatPanel:SetPos(20, ScrH() - 260)
     chatPanel:SetVisible(false)
     chatPanel:SetZPos(200)
     function chatPanel:Paint(w,h)
         Dubz.DrawBubble(0,0,w,h, Color(10,10,10,220))
     end
-
-    local function UpdateChatPosition()
-        if not IsValid(chatPanel) then return end
-        local y = math.max(16, ScrH() - chatPanel:GetTall() - 340)
-        chatPanel:SetPos(20, y)
-    end
-    chatPanel.UpdateChatPosition = UpdateChatPosition
-    UpdateChatPosition()
 
     chatLog = vgui.Create("RichText", chatPanel)
     chatLog:Dock(FILL)
@@ -67,8 +58,8 @@ local function EnsureChatPanel()
     chatPanel.Entry = entry
 
     hook.Add("OnScreenSizeChanged","Dubz_ChatResize", function()
-        if IsValid(chatPanel) and chatPanel.UpdateChatPosition then
-            chatPanel:UpdateChatPosition()
+        if IsValid(chatPanel) then
+            chatPanel:SetPos(20, ScrH() - chatPanel:GetTall() - 40)
         end
     end)
 
@@ -98,7 +89,6 @@ local function OpenChat(teamChat)
     local panel = EnsureChatPanel()
     teamOnly = teamChat or false
     panel:SetVisible(true)
-    panel:MakePopup()
     panel.Entry:SetText("")
     if teamOnly then
         panel.Entry:SetPlaceholderText("Team message...")
