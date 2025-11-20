@@ -4,6 +4,7 @@
 --========================================--
 
 if not Dubz then return end
+DarkRP = DarkRP or {}
 if IsValid(Dubz_NotifyContainer) then Dubz_NotifyContainer:Remove() end
 
 local active = {}
@@ -107,10 +108,21 @@ local function AddDubzNotification(text, typeID, time)
     return pnl
 end
 
---========================================--
--- OVERRIDES
---========================================--
---[[
+Dubz.AddNotification = AddDubzNotification
+
+local function mapMsgType(msgType)
+    if msgType == "error" then return 1
+    elseif msgType == "undo" then return 2
+    elseif msgType == "hint" then return 0
+    elseif msgType == "cleanup" then return 4
+    end
+    return tonumber(msgType) or 0
+end
+
+function Dubz.Notify(msg, msgType, length)
+    AddDubzNotification(tostring(msg or ""), mapMsgType(msgType), length or 5)
+end
+
 function notification.AddLegacy(text, type, time)
     AddDubzNotification(text, type, time)
 end
@@ -126,9 +138,10 @@ function DarkRP.notifyAll(type, time, msg)
 end
 
 function DarkRP.notifyInDistance(origin, range, type, time, msg)
-    if origin:DistToSqr(LocalPlayer():GetPos()) <= range * range then
+    if not IsValid(LocalPlayer()) then return end
+    if origin:DistToSqr(LocalPlayer():GetPos()) <= (range * range) then
         AddDubzNotification(msg, type, time)
     end
 end
---]]
+
 print("[DubzUI] Default-Icon Notifications Loaded")

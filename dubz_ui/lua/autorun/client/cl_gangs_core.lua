@@ -5,10 +5,15 @@
 
 Dubz = Dubz or {}
 Dubz.Gangs = Dubz.Gangs or {}
+Dubz.GangRevision = Dubz.GangRevision or 0
 
 local Gangs     = Dubz.Gangs
 local MyGangId  = ""
 local MyRank    = 0
+
+local function BumpGangRevision()
+    Dubz.GangRevision = (Dubz.GangRevision or 0) + 1
+end
 
 --------------------------------------------------------
 -- HELPER: Send actions to server
@@ -91,6 +96,7 @@ net.Receive("Dubz_Gang_FullSync", function()
     end
 
     hook.Run("Dubz_Gangs_FullSync", Gangs)
+    BumpGangRevision()
     Dubz.RefreshGangUI()
 end)
 
@@ -102,6 +108,7 @@ net.Receive("Dubz_Gang_MyStatus", function()
     MyRank   = net.ReadUInt(3) or 0
 
     hook.Run("Dubz_Gangs_MyStatus", MyGangId, MyRank)
+    BumpGangRevision()
     Dubz.RefreshGangUI()
 end)
 
@@ -120,6 +127,7 @@ net.Receive("Dubz_Gang_Update", function()
     end
 
     hook.Run("Dubz_Gangs_GangUpdated", gid, Dubz.Gangs[gid])
+    BumpGangRevision()
     Dubz.RefreshGangUI()
 end)
 
