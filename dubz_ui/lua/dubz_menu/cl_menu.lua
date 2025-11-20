@@ -9,7 +9,6 @@ end
 local frame, overlay, isOpen, switchTo, content = nil, nil, false, nil, nil
 local openedByF4 = false
 local refreshQueued = false
-local stickyInputLock = false
 
 local function ensureOverlay()
     if IsValid(overlay) then return overlay end
@@ -168,6 +167,20 @@ function Dubz.RequestMenuRefresh(tabId)
     end)
 end
 
+function Dubz.RequestMenuRefresh(tabId)
+    if not isOpen then return end
+    if tabId and Dubz.MenuActiveTab ~= tabId then return end
+    if refreshQueued then return end
+    refreshQueued = true
+    timer.Simple(0, function()
+        refreshQueued = false
+        if not isOpen or not switchTo then return end
+        if tabId and Dubz.MenuActiveTab ~= tabId then return end
+        if not Dubz.MenuActiveTab then return end
+        switchTo(Dubz.MenuActiveTab, true)
+    end)
+end
+
 Dubz.RefreshActiveTab = Dubz.RequestMenuRefresh
 Dubz.OpenMenuPanel = openMenu
 Dubz.CloseMenuPanel = closeMenu
@@ -188,7 +201,6 @@ hook.Add("Think","Dubz_MenuHoldTab", function()
             else
                 if Dubz.MenuLocked then
                     Dubz.MenuLocked = false
-                    stickyInputLock = false
                     closeMenu()
                 end
             end
@@ -217,28 +229,23 @@ end)
 
 do
     local hadFocus = false
-    local keyboardClasses = {
-        DTextEntry   = true,
-        DMultiChoice = true,
-        DBinder      = true,
-        DComboBox    = true,
-        DNumberWang  = true
-    }
-
     hook.Add("Think","Dubz_MenuFocusTextLock", function()
         if not isOpen then
-            hadFocus = false
+            if hadFocus then
+                Dubz.MenuLocked = false
+                hadFocus = false
+            end
             return
         end
 
         local focus = vgui.GetKeyboardFocus()
-        local needsKeyboard = IsValid(focus) and keyboardClasses[focus:GetClassName()]
+        local needsKeyboard = IsValid(focus) and (focus:GetClassName() == "DTextEntry" or focus:GetClassName() == "DMultiChoice" or focus:GetClassName() == "DBinder")
 
-        if needsKeyboard and not stickyInputLock then
+        if needsKeyboard and not hadFocus then
             Dubz.MenuLocked = true
-            stickyInputLock = true
             hadFocus = true
         elseif not needsKeyboard and hadFocus then
+            Dubz.MenuLocked = false
             hadFocus = false
         end
     end)

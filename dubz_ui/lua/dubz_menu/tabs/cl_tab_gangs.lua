@@ -94,22 +94,14 @@ local function GetGangTerritories(gid)
     return list
 end
 
-local lastRevision = -1
-
-local function QueueMenuRefresh(force)
-    local rev = (Dubz and Dubz.GangRevision) or 0
-    if not force and rev == lastRevision then return end
-    lastRevision = rev
-
+local function QueueMenuRefresh()
     RefreshGangUI()
     if Dubz and Dubz.RequestMenuRefresh then
         Dubz.RequestMenuRefresh("gangs")
     end
 end
 
-hook.Add("Dubz_Gangs_FullSync", "Dubz_Gangs_Tab_FullRefresh", function()
-    QueueMenuRefresh(true)
-end)
+hook.Add("Dubz_Gangs_FullSync", "Dubz_Gangs_Tab_FullRefresh", QueueMenuRefresh)
 hook.Add("Dubz_Gangs_MyStatus", "Dubz_Gangs_Tab_StatusRefresh", QueueMenuRefresh)
 hook.Add("Dubz_Gangs_GangUpdated", "Dubz_Gangs_Tab_UpdateRefresh", QueueMenuRefresh)
 
