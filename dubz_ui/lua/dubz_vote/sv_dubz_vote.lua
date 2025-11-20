@@ -1,8 +1,4 @@
-Dubz = Dubz or {}
-Dubz.Vote = Dubz.Vote or {}
-Dubz.Vote.Active = Dubz.Vote.Active or {}
-Dubz.Vote.Types  = Dubz.Vote.Types or {}
-Dubz.Vote.Config = Dubz.Vote.Config or {}
+if not Dubz or not Dubz.Vote then return end
 
 util.AddNetworkString("Dubz_Vote_Start")
 util.AddNetworkString("Dubz_Vote_Cast")
@@ -116,6 +112,10 @@ local function FinishVote(id, vote, opts)
         summary = string.format("Vote '%s' finished, winner = %d (%s)", id, winningIndex, vote.options[winningIndex] or "none")
         Dubz.Vote.Log(summary)
         if Dubz.Log then Dubz.Log(summary, "INFO", "VOTE") end
+    if cancelled then
+        Dubz.Vote.Log(string.format("Vote '%s' cancelled (%s)", id, opts and opts.reason or "cancelled"))
+    else
+        Dubz.Vote.Log(string.format("Vote '%s' finished, winner = %d (%s)", id, winningIndex, vote.options[winningIndex] or "none"))
     end
 
     if not cancelled then
@@ -224,10 +224,7 @@ end)
 -----------------------------------------------------------------------
 -- JOB VOTE TYPE (replaces DarkRP job votes)
 -----------------------------------------------------------------------
-local function RegisterJobVoteType()
-    if Dubz.Vote._JobTypeRegistered then return end
-    if not DarkRP then return end
-
+if DarkRP then
     Dubz.Vote.RegisterType("job", {
         OnFinish = function(v, counts, winner)
             local payload = v.payload or {}
@@ -255,13 +252,7 @@ local function RegisterJobVoteType()
             end
         end
     })
-
-    Dubz.Vote._JobTypeRegistered = true
 end
-
-hook.Add("DarkRPFinishedLoading", "Dubz_Vote_RegisterJobType", RegisterJobVoteType)
-hook.Add("InitPostEntity", "Dubz_Vote_RegisterJobType_Init", RegisterJobVoteType)
-RegisterJobVoteType()
 
 Dubz.Vote.RegisterType("darkrp_legacy", {
     OnFinish = function(v, counts, winner)
@@ -351,10 +342,7 @@ Dubz.Vote.RegisterType("darkrp_mapvote", {
 -----------------------------------------------------------------------
 -- JOB VOTE CONSOLE COMMAND: "dubz_jobvote jobCommand"
 -----------------------------------------------------------------------
-local function RegisterJobVoteCommand()
-    if Dubz.Vote._JobCommandRegistered then return end
-    if not DarkRP then return end
-
+if DarkRP then
     concommand.Add("dubz_jobvote", function(ply, cmd, args)
         if not IsValid(ply) then return end
         local jobCmd = args[1]
@@ -366,10 +354,7 @@ local function RegisterJobVoteCommand()
         else
             -- fallback manual search
             for _, v in pairs(RPExtraTeams or {}) do
-                if v.command == jobCmd then
-                    job = v
-                    break
-                end
+                if v.command == jobCmd then job = v break end
             end
         end
         if not job then
@@ -406,17 +391,9 @@ local function RegisterJobVoteCommand()
             }
         })
     end)
-
-    Dubz.Vote._JobCommandRegistered = true
 end
 
-hook.Add("DarkRPFinishedLoading", "Dubz_Vote_RegisterJobCommand", RegisterJobVoteCommand)
-hook.Add("InitPostEntity", "Dubz_Vote_RegisterJobCommand_Init", RegisterJobVoteCommand)
-RegisterJobVoteCommand()
-
-local function BridgeDarkRPVoting()
-    if not DarkRP then return end
-
+if DarkRP then
     if DarkRP.createVote and not Dubz.Vote._LegacyBridge then
         function DarkRP.createVote(question, voteTbl, callback, time, target, ...)
             local opts = {}
@@ -504,7 +481,7 @@ local function BridgeDarkRPVoting()
         Dubz.Vote._MapBridge = true
     end
 
-    if DarkRP.destroyVotesWithEnt and not Dubz.Vote._DestroyBridge then
+    if DarkRP.destroyVotesWithEnt then
         local oldDestroy = DarkRP.destroyVotesWithEnt
         function DarkRP.destroyVotesWithEnt(ent)
             for id, vote in pairs(Dubz.Vote.Active) do
@@ -516,10 +493,5 @@ local function BridgeDarkRPVoting()
                 return oldDestroy(ent)
             end
         end
-        Dubz.Vote._DestroyBridge = true
     end
 end
-
-hook.Add("DarkRPFinishedLoading", "Dubz_Vote_BridgeDarkRP", BridgeDarkRPVoting)
-hook.Add("InitPostEntity", "Dubz_Vote_BridgeDarkRP_Init", BridgeDarkRPVoting)
-BridgeDarkRPVoting()

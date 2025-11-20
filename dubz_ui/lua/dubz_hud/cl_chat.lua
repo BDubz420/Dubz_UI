@@ -8,22 +8,12 @@ local function EnsureChatPanel()
     if IsValid(chatPanel) then return chatPanel end
     chatPanel = vgui.Create("DPanel")
     chatPanel:SetSize(420, 220)
-    chatPanel:SetMouseInputEnabled(false)
-    chatPanel.SetMouseInputEnabled(chatPanel, false)
-    chatPanel:SetKeyboardInputEnabled(false)
-    chatPanel:SetVisible(true)
+    chatPanel:SetPos(20, ScrH() - 260)
+    chatPanel:SetVisible(false)
     chatPanel:SetZPos(200)
     function chatPanel:Paint(w,h)
         Dubz.DrawBubble(0,0,w,h, Color(10,10,10,220))
     end
-
-    local function UpdateChatPosition()
-        if not IsValid(chatPanel) then return end
-        local y = math.max(16, ScrH() - chatPanel:GetTall() - 520)
-        chatPanel:SetPos(20, y)
-    end
-    chatPanel.UpdateChatPosition = UpdateChatPosition
-    UpdateChatPosition()
 
     chatLog = vgui.Create("RichText", chatPanel)
     chatLog:Dock(FILL)
@@ -45,32 +35,31 @@ local function EnsureChatPanel()
 
     local entry = vgui.Create("DTextEntry", chatPanel)
     entry:Dock(BOTTOM)
-    entry:SetTall(0)
+    entry:SetTall(28)
     entry:SetUpdateOnType(true)
     entry:SetPlaceholderText("Type a message...")
-    entry:SetVisible(false)
     if Dubz.HookTextEntry then Dubz.HookTextEntry(entry) end
-    function entry:Paint(w, h)
-        Dubz.DrawBubble(0, 0, w, h, Color(18, 18, 18, 240))
-        self:DrawTextEntryText(Color(235,235,235), Dubz.GetAccentColor() or Color(70,150,220), Color(235,235,235))
-    end
     function entry:OnEnter()
         local txt = string.Trim(self:GetText() or "")
         if txt == "" then
+            chatPanel:SetVisible(false)
+            gui.EnableScreenClicker(false)
+            isOpen = false
             self:SetText("")
-            CloseChat()
             return
         end
         local cmd = teamOnly and "say_team" or "say"
         RunConsoleCommand(cmd, txt)
         self:SetText("")
-        CloseChat()
+        chatPanel:SetVisible(false)
+        gui.EnableScreenClicker(false)
+        isOpen = false
     end
     chatPanel.Entry = entry
 
     hook.Add("OnScreenSizeChanged","Dubz_ChatResize", function()
-        if IsValid(chatPanel) and chatPanel.UpdateChatPosition then
-            chatPanel:UpdateChatPosition()
+        if IsValid(chatPanel) then
+            chatPanel:SetPos(20, ScrH() - chatPanel:GetTall() - 40)
         end
     end)
 
@@ -99,38 +88,22 @@ end
 local function OpenChat(teamChat)
     local panel = EnsureChatPanel()
     teamOnly = teamChat or false
-    panel:SetMouseInputEnabled(true)
-    panel:SetKeyboardInputEnabled(true)
-    panel:SetAlpha(255)
-    chatLog:DockMargin(8,8,8,40)
-    panel.Entry:SetTall(28)
-      panel.Entry:SetVisible(true)
-      panel.Entry:SetText("")
+    panel:SetVisible(true)
+    panel.Entry:SetText("")
     if teamOnly then
         panel.Entry:SetPlaceholderText("Team message...")
     else
         panel.Entry:SetPlaceholderText("Type a message...")
     end
-      panel.Entry:RequestFocus()
-      timer.Simple(0, function()
-          if IsValid(panel.Entry) then
-              panel.Entry:RequestFocus()
-          end
-      end)
-      gui.EnableScreenClicker(true)
-      isOpen = true
+    panel.Entry:RequestFocus()
+    gui.EnableScreenClicker(true)
+    isOpen = true
 end
 
 local function CloseChat()
     if not IsValid(chatPanel) then return end
-    if IsValid(chatPanel.Entry) then
-        chatPanel.Entry:SetText("")
-        chatPanel.Entry:SetVisible(false)
-        chatPanel.Entry:SetTall(0)
-    end
-    chatLog:DockMargin(8,8,8,8)
-    chatPanel:SetMouseInputEnabled(false)
-    chatPanel:SetKeyboardInputEnabled(false)
+    chatPanel:SetVisible(false)
+    if IsValid(chatPanel.Entry) then chatPanel.Entry:SetText("") end
     gui.EnableScreenClicker(false)
     isOpen = false
 end
@@ -146,8 +119,7 @@ hook.Add("PlayerBindPress","Dubz_OpenChat", function(ply, bind, pressed)
     end
 end)
 
-hook.Add("StartChat","Dubz_BlockDefaultChat", function(isTeam)
-    OpenChat(isTeam)
+hook.Add("StartChat","Dubz_BlockDefaultChat", function()
     return true
 end)
 
