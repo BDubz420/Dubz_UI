@@ -53,12 +53,7 @@ if SERVER then
             if online == 0 then
                 for _, ent in ipairs(ents.FindByClass("ent_dubz_graffiti_spot")) do
                     if IsValid(ent) and ent.GetOwnerGangId and ent:GetOwnerGangId() == gid then
-                        ent:SetIsClaimed(false)
-                        ent:SetOwnerGangId("")
-                        ent:SetOwnerGangName("")
-                        if ent.SetTerritoryName then
-                            ent:SetTerritoryName("Unclaimed Territory")
-                        end
+                        ent:ResetOwnership("Unclaimed Territory")
                         ent.ClaimProg = nil
                         ent.ProgTime  = nil
                     end
@@ -83,10 +78,27 @@ function ENT:Initialize()
 
     self.IsClaiming = {}
     self:SetUseType(SIMPLE_USE)
+    self.TerritoryRecordId = nil
+    self._territoryGang = ""
 
     -- default placeholder name
     if self:GetTerritoryName() == "" then
         self:SetTerritoryName("Unnamed Territory")
+    end
+end
+
+function ENT:ResetOwnership(forceName)
+    local gid = self:GetOwnerGangId()
+    if gid ~= "" and RemoveGangTerritory then
+        RemoveGangTerritory(gid, self.TerritoryRecordId or self:GetTerritoryName())
+    end
+    self.TerritoryRecordId = nil
+    self._territoryGang = ""
+    self:SetIsClaimed(false)
+    self:SetOwnerGangId("")
+    self:SetOwnerGangName("")
+    if forceName then
+        self:SetTerritoryName(forceName)
     end
 end
 
@@ -123,9 +135,18 @@ function ENT:Use(ply)
 end
 
 function ENT:Think()
+    local function ResetClientProgress(target)
+        if not IsValid(target) then return end
+        net.Start("Dubz_Graffiti_ClaimProgress")
+            net.WriteEntity(self)
+            net.WriteFloat(-1)
+        net.Send(target)
+    end
+
     for ply, data in pairs(self.IsClaiming) do
 
         if not IsValid(ply) then
+            ResetClientProgress(ply)
             self.IsClaiming[ply] = nil
             continue
         end
@@ -133,11 +154,13 @@ function ENT:Think()
         -- must keep aiming at entity while holding E
         local tr = ply:GetEyeTrace()
         if tr.Entity ~= self then
+            ResetClientProgress(ply)
             self.IsClaiming[ply] = nil
             continue
         end
 
         if not ply:KeyDown(IN_USE) then
+            ResetClientProgress(ply)
             self.IsClaiming[ply] = nil
             continue
         end
@@ -163,23 +186,37 @@ function ENT:FinishClaim(ply, gid)
     local gang = Dubz.Gangs and Dubz.Gangs[gid]
     if not gang then return end
 
+    if self:GetIsClaimed() then
+        self:ResetOwnership()
+    end
+
     self:SetIsClaimed(true)
     self:SetOwnerGangId(gid)
     self:SetOwnerGangName(gang.name)
 
     if AddGangTerritory then
-        AddGangTerritory(gid, {
+        local pos = self:GetPos()
+        local ang = self:GetAngles()
+        local tid = AddGangTerritory(gid, {
             name = self:GetTerritoryName(),
             sprayer = ply:Nick(),
             time = os.time(),
-            pos = self:GetPos(),
-            ang = self:GetAngles()
+            pos = { x = pos.x, y = pos.y, z = pos.z },
+            ang = { p = ang.p, y = ang.y, r = ang.r }
         })
+        self.TerritoryRecordId = tid
+        self._territoryGang = gid
     end
 
     net.Start("Dubz_Graffiti_ClaimFinished")
         net.WriteEntity(self)
     net.Broadcast()
+end
+
+function ENT:OnRemove()
+    if self:GetIsClaimed() then
+        self:ResetOwnership()
+    end
 end
 
 end -- SERVER
@@ -197,7 +234,14 @@ net.Receive("Dubz_Graffiti_ClaimProgress", function()
     local ent = net.ReadEntity()
     if not IsValid(ent) then return end
 
-    ent.ClaimProg = net.ReadFloat()
+    local prog = net.ReadFloat()
+    if prog and prog < 0 then
+        ent.ClaimProg = nil
+        ent.ProgTime  = nil
+        return
+    end
+
+    ent.ClaimProg = prog
     ent.ProgTime  = CurTime()
 end)
 
