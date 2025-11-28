@@ -209,30 +209,35 @@ Dubz.RegisterTab("dashboard","Dashboard","dashboard", function(parent)
             end
 
             local richestMap = {}
+            local onlineSet = {}
+            local onlineNames = {}
 
-            -- 1️⃣ Offline stored data
-            for sid, dat in pairs(Dubz.RichestPlayers or {}) do
-                local sid64 = ToSID64(sid)
-                if sid64 then
+            -- 1️⃣ Online snapshot (these replace any offline cache)
+            for _, ply in ipairs(player.GetAll()) do
+                if IsValid(ply) and ply.SteamID64 then
+                    local sid64 = tostring(ply:SteamID64())
+                    onlineSet[sid64] = true
+                    onlineNames[string.lower(ply:Nick() or "")] = true
+                    local liveMoney = (ply.getDarkRPVar and ply:getDarkRPVar("money")) or 0
                     richestMap[sid64] = {
-                        sid64   = sid64,
-                        name    = (dat and dat.name) or "Unknown",
-                        money   = tonumber(dat and dat.money) or 0,
-                        isOnline= false
+                        sid64    = sid64,
+                        name     = ply:Nick(),
+                        money    = math.floor(tonumber(liveMoney) or 0),
+                        isOnline = true
                     }
                 end
             end
 
-            -- 2️⃣ Online override
-            for _, ply in ipairs(player.GetAll()) do
-                if IsValid(ply) and ply.SteamID64 then
-                    local sid64 = tostring(ply:SteamID64())
-                    local liveMoney = (ply.getDarkRPVar and ply:getDarkRPVar("money")) or 0
+            -- 2️⃣ Offline cache for players not currently online
+            for sid, dat in pairs(Dubz.RichestPlayers or {}) do
+                local sid64 = ToSID64(sid)
+                local lowerName = string.lower((dat and dat.name) or "")
+                if sid64 and not onlineSet[sid64] and not richestMap[sid64] and not onlineNames[lowerName] then
                     richestMap[sid64] = {
-                        sid64   = sid64,
-                        name    = ply:Nick(),
-                        money   = math.floor(tonumber(liveMoney) or 0),
-                        isOnline= true
+                        sid64    = sid64,
+                        name     = (dat and dat.name) or "Unknown",
+                        money    = tonumber(dat and dat.money) or 0,
+                        isOnline = false
                     }
                 end
             end
@@ -277,8 +282,31 @@ Dubz.RegisterTab("dashboard","Dashboard","dashboard", function(parent)
             local gy = listY + yoff + 20
             draw.SimpleText("Top Richest Gangs", "DubzHUD_Header", listX, gy - 24, accent)
             local gangs = {}
+            local gangMap = {}
+
+            for _, ply in ipairs(player.GetAll()) do
+                if IsValid(ply) then
+                    local gname = ply:GetNWString("DubzGang", "")
+                    if gname ~= "" then
+                        local cash = (ply.getDarkRPVar and ply:getDarkRPVar("money")) or 0
+                        local amt = math.floor(tonumber(cash) or 0)
+                        if gangMap[gname] then
+                            gangMap[gname].money = gangMap[gname].money + amt
+                        else
+                            gangMap[gname] = { name = gname, money = amt, isOnline = true }
+                        end
+                    end
+                end
+            end
+
             for gname, amt in pairs(Dubz.RichestGangs or {}) do
-                table.insert(gangs, { name=gname, money=tonumber(amt) or 0 })
+                if not gangMap[gname] then
+                    gangMap[gname] = { name = gname, money = tonumber(amt) or 0, isOnline = false }
+                end
+            end
+
+            for _, entry in pairs(gangMap) do
+                table.insert(gangs, entry)
             end
             table.sort(gangs, function(a, b) return (a.money or 0) > (b.money or 0) end)
             local gshow = (Dubz.Config.Gangs.DashboardTopCount) or 5
@@ -288,7 +316,8 @@ Dubz.RegisterTab("dashboard","Dashboard","dashboard", function(parent)
                 Dubz.DrawBubble(listX, gy + gyoff, listW, 38, Color(24,24,24,220))
                 local rcol = (i==1 and Color(255,215,0)) or (i==2 and Color(192,192,192)) or (i==3 and Color(205,127,50)) or Color(230,230,230)
                 draw.SimpleText("#"..i, "DubzHUD_Small", listX + 10, gy + gyoff + 10, rcol)
-                draw.SimpleText(t.name or "Gang", "DubzHUD_Body", listX + 140, gy + gyoff + 8, Color(230,230,230))
+                local nameCol = t.isOnline and Color(120,255,160) or Color(230,230,230)
+                draw.SimpleText(t.name or "Gang", "DubzHUD_Body", listX + 140, gy + gyoff + 8, nameCol)
                 local moneyText = (DarkRP and DarkRP.formatMoney and DarkRP.formatMoney(t.money)) or ("$"..tostring(t.money))
                 draw.SimpleText(moneyText, "DubzHUD_Body", listX + listW - 10, gy + gyoff + 8, Color(230,230,230), TEXT_ALIGN_RIGHT)
                 gyoff = gyoff + 44

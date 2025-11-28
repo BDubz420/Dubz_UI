@@ -25,13 +25,23 @@ end
 -- Helpers (shared)
 function Dubz.GetSID64(plyOrId)
     if isentity(plyOrId) and plyOrId.SteamID64 then return plyOrId:SteamID64() end
+
     if isstring(plyOrId) then
-        if tonumber(plyOrId) then return tostring(math.floor(tonumber(plyOrId))) end
-        if string.find(plyOrId, "STEAM_") and util and util.SteamIDTo64 then
-            local ok, sid = pcall(util.SteamIDTo64, plyOrId); if ok and sid ~= "0" then return sid end
+        local str = string.Trim(plyOrId)
+        if str == "" then return nil end
+
+        -- Allow STEAM_ strings, but never coerce large SteamID64s through tonumber (precision loss)
+        if string.find(str, "STEAM_", 1, true) and util and util.SteamIDTo64 then
+            local ok, sid = pcall(util.SteamIDTo64, str)
+            if ok and sid and sid ~= "0" then return sid end
         end
-        return plyOrId
+
+        -- Pure-digit strings are already SteamID64s; keep them untouched
+        if string.match(str, "^%d+$") then return str end
+
+        return str
     end
+
     return nil
 end
 
