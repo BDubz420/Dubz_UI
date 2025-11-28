@@ -226,6 +226,8 @@ local function SaveGangs()
 
     file.Write(DATA_FILE, encoded)
 
+    print(string.format("[Dubz Gangs] Saved %d gangs to %s", table.Count(blob.gangs or {}), DATA_FILE))
+
     RebuildGangByMember()
     RefreshGangNWForAll()
 end
@@ -243,6 +245,7 @@ local function LoadGangs()
         local ok, decoded = pcall(util.JSONToTable, raw)
         if ok and istable(decoded) then
             Dubz.Gangs = ExtractGangTable(decoded)
+            print(string.format("[Dubz Gangs] Parsed gangs file '%s'", DATA_FILE))
         else
             print("[Dubz Gangs] Failed to parse gangs file, starting fresh.")
             Dubz.Gangs = {}
@@ -258,11 +261,13 @@ local function LoadGangs()
             -- runtime-only state should be cleared on boot
             g.territories = {}
             g.wars = {}
+            print(string.format("[Dubz Gangs] Loaded gang %-20s members=%d bank=%s", gid, table.Count(g.members or {}), tostring(g.bank or 0)))
         end
     end
 
     RebuildGangByMember()
     RefreshGangNWForAll()
+    print(string.format("[Dubz Gangs] Finished load, %d gangs active", table.Count(Dubz.Gangs)))
 end
 hook.Add("Initialize","Dubz_Gangs_Load_Fixed", function()
     timer.Simple(1, function()
@@ -312,12 +317,14 @@ local function SendFullSync(ply)
     ply:SetNWString("DubzGang", name)
     ply:SetNWVector("DubzGangColor", vec)
 
+    local r = 0
+    if g and g.members and g.members[sid] then
+        r = g.members[sid].rank or 1
+    end
+    print(string.format("[Dubz Gangs] MyStatus -> %s gid=%s rank=%d", ply:Nick(), gid or "", r or 0))
+
     net.Start("Dubz_Gang_MyStatus")
         net.WriteString(gid or "")
-        local r = 0
-        if g and g.members and g.members[sid] then
-            r = g.members[sid].rank or 1
-        end
         net.WriteUInt(r, 3)
     net.Send(ply)
 end

@@ -15,6 +15,10 @@ local function BumpGangRevision()
     Dubz.GangRevision = (Dubz.GangRevision or 0) + 1
 end
 
+local function BumpGangRevision()
+    Dubz.GangRevision = (Dubz.GangRevision or 0) + 1
+end
+
 --------------------------------------------------------
 -- HELPER: Send actions to server
 --------------------------------------------------------
@@ -108,6 +112,10 @@ end)
 net.Receive("Dubz_Gang_MyStatus", function()
     MyGangId = net.ReadString() or ""
     MyRank   = net.ReadUInt(3) or 0
+
+    -- expose to other client files that rely on the globals
+    Dubz.MyGangId = MyGangId
+    Dubz.MyRank   = MyRank
 
     hook.Run("Dubz_Gangs_MyStatus", MyGangId, MyRank)
     BumpGangRevision()
