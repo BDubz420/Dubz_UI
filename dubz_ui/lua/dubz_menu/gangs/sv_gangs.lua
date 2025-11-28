@@ -89,6 +89,13 @@ local function SanitizeGang(gid, gang)
             end
         end
     end
+    if gang.leaderSid64 and gang.leaderSid64 ~= "" and not sanitizedMembers[gang.leaderSid64] then
+        sanitizedMembers[gang.leaderSid64] = {
+            name   = tostring(gang.leaderName or gang.name or "Leader"),
+            rank   = Dubz.GangRanks.Leader,
+            joined = os.time()
+        }
+    end
     gang.members = sanitizedMembers
 
     gang.rankTitles = gang.rankTitles or table.Copy(Dubz.DefaultRankTitles)
@@ -119,6 +126,17 @@ local function RebuildGangByMember()
                 if strSid and strSid ~= "" then
                     Dubz.GangByMember[strSid] = gid
                 end
+            end
+        elseif gang.leaderSid64 then
+            local strSid = Dubz.GetSID64(gang.leaderSid64)
+            if strSid and strSid ~= "" then
+                Dubz.GangByMember[strSid] = gid
+                gang.members = gang.members or {}
+                gang.members[strSid] = gang.members[strSid] or {
+                    name   = tostring(gang.leaderName or gang.name or "Leader"),
+                    rank   = Dubz.GangRanks.Leader,
+                    joined = os.time()
+                }
             end
         end
     end
