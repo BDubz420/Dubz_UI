@@ -215,21 +215,4 @@ if SERVER then
         end
     end)
 
-    hook.Add("PostGamemodeLoaded", "Dubz_DisableDarkRPVoiceUI", function()
-
-        -- DarkRP's HUDPaint hook that draws:
-        -- "No one can hear you speak!"
-        -- "Players who can hear you speak:"
-        hook.Remove("HUDPaint", "DrawVoiceChat")
-        hook.Remove("HUDPaint", "DarkRP_ChatReceivers")
-
-        -- Extra failsafe: remove any other voice UI painters
-        for k, _ in pairs(hook.GetTable().HUDPaint or {}) do
-            if string.lower(k):find("voice") or string.lower(k):find("chatreceivers") then
-                hook.Remove("HUDPaint", k)
-            end
-        end
-
-        print("[Dubz Voice UI] Default DarkRP voice HUD removed.")
-    end)
 end

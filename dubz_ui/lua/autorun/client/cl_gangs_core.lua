@@ -8,8 +8,8 @@ Dubz.Gangs = Dubz.Gangs or {}
 Dubz.GangRevision = Dubz.GangRevision or 0
 
 local Gangs     = Dubz.Gangs
-Dubz.MyGangId = Dubz.MyGangId or ""
-Dubz.MyRank   = Dubz.MyRank   or 0
+local MyGangId  = ""
+local MyRank    = 0
 
 local function BumpGangRevision()
     Dubz.GangRevision = (Dubz.GangRevision or 0) + 1
@@ -75,11 +75,13 @@ local function NormalizeGraffitiClient(g)
         g.graffiti.fontScaled or
         ("DubzGraffiti_Font_" .. math.floor(g.graffiti.scale * 100))
 
-    local c = g.color or { r = 255, g = 255, b = 255 }
+    g.graffiti.bgMat = g.graffiti.bgMat or "brick/brick_model"
+
+    local base = g.graffiti.color or g.color or { r=255, g=255, b=255 }
     g.graffiti.color = {
-        r = c.r or 255,
-        g = c.g or 255,
-        b = c.b or 255
+        r = math.Clamp(tonumber(base.r) or 255, 0, 255),
+        g = math.Clamp(tonumber(base.g) or 255, 0, 255),
+        b = math.Clamp(tonumber(base.b) or 255, 0, 255)
     }
 end
 
@@ -91,11 +93,9 @@ net.Receive("Dubz_Gang_FullSync", function()
     Dubz.Gangs = tbl
     Gangs = Dubz.Gangs
 
-    for _, g in pairs(Gangs) do
+    for gid, g in pairs(Gangs) do
         NormalizeGraffitiClient(g)
     end
-
-    print("[Dubz Gangs][CLIENT] FullSync received with", table.Count(Gangs or {}), "gangs")
 
     hook.Run("Dubz_Gangs_FullSync", Gangs)
     BumpGangRevision()
@@ -106,18 +106,10 @@ end)
 -- MY STATUS
 --------------------------------------------------------
 net.Receive("Dubz_Gang_MyStatus", function()
-    Dubz.MyGangId = net.ReadString() or ""
-    Dubz.MyRank   = net.ReadUInt(3) or 0
+    MyGangId = net.ReadString() or ""
+    MyRank   = net.ReadUInt(3) or 0
 
-    print(string.format(
-        "[Dubz Gangs][CLIENT] MyStatus: gid=%s rank=%d",
-        tostring(Dubz.MyGangId),
-        tonumber(Dubz.MyRank or 0)
-    ))
-
-    -- IMPORTANT: pass the correct values into the hook
-    hook.Run("Dubz_Gangs_MyStatus", Dubz.MyGangId, Dubz.MyRank)
-
+    hook.Run("Dubz_Gangs_MyStatus", MyGangId, MyRank)
     BumpGangRevision()
     Dubz.RefreshGangUI()
 end)
@@ -135,8 +127,6 @@ net.Receive("Dubz_Gang_Update", function()
     else
         Dubz.Gangs[gid] = nil
     end
-
-    print("[Dubz Gangs][CLIENT] Gang update received for", gid, Dubz.Gangs[gid] and "exists" or "removed")
 
     hook.Run("Dubz_Gangs_GangUpdated", gid, Dubz.Gangs[gid])
     BumpGangRevision()

@@ -1,16 +1,16 @@
 Dubz = Dubz or {}
 Dubz.Vote = Dubz.Vote or {}
 Dubz.Vote.Active = Dubz.Vote.Active or {}
-Dubz.Vote.Types  = Dubz.Vote.Types or {}
+Dubz.Vote.Types  = Dubz.Vote.Types  or {}
 Dubz.Vote.Config = Dubz.Vote.Config or {}
 
 util.AddNetworkString("Dubz_Vote_Start")
 util.AddNetworkString("Dubz_Vote_Cast")
 util.AddNetworkString("Dubz_Vote_End")
 
-Dubz.Vote.Active = Dubz.Vote.Active or {}
-Dubz.Vote.Types  = Dubz.Vote.Types or {}  -- named handlers (job, gang, etc)
-
+-----------------------------------------------------------------------
+-- Helpers
+-----------------------------------------------------------------------
 local function PlayerCanAfford(ply, amt)
     amt = math.floor(tonumber(amt) or 0)
     if amt <= 0 then return true end
@@ -46,6 +46,9 @@ local function GetRemainingTime(vote)
     return math.Clamp(math.ceil(math.max(0, vote.endTime - CurTime())), 0, 255)
 end
 
+-----------------------------------------------------------------------
+-- Networking
+-----------------------------------------------------------------------
 local function SendVoteStart(vote, target)
     if not vote then return end
 
@@ -76,6 +79,9 @@ local function BroadcastVoteEnd(id, counts, winner, cancelled)
     net.Broadcast()
 end
 
+-----------------------------------------------------------------------
+-- Core vote lifecycle
+-----------------------------------------------------------------------
 local function FinishVote(id, vote, opts)
     Dubz.Vote.Active[id] = nil
     if not vote then return end
@@ -107,15 +113,16 @@ local function FinishVote(id, vote, opts)
     end
 
     local cancelled = opts and opts.cancelled
-    local summary
     if cancelled then
-        summary = string.format("Vote '%s' cancelled (%s)", id, opts and opts.reason or "cancelled")
-        Dubz.Vote.Log(summary)
-        if Dubz.Log then Dubz.Log(summary, "WARN", "VOTE") end
+        if Dubz.Vote.Log then Dubz.Vote.Log(string.format("Vote '%s' cancelled (%s)", id, opts.reason or "cancelled")) end
+        if Dubz.Log then Dubz.Log(string.format("Vote '%s' cancelled (%s)", id, opts.reason or "cancelled"), "WARN", "VOTE") end
     else
-        summary = string.format("Vote '%s' finished, winner = %d (%s)", id, winningIndex, vote.options[winningIndex] or "none")
-        Dubz.Vote.Log(summary)
-        if Dubz.Log then Dubz.Log(summary, "INFO", "VOTE") end
+        if Dubz.Vote.Log then
+            Dubz.Vote.Log(string.format("Vote '%s' finished, winner = %d (%s)", id, winningIndex, vote.options[winningIndex] or "none"))
+        end
+        if Dubz.Log then
+            Dubz.Log(string.format("Vote '%s' finished, winner = %d (%s)", id, winningIndex, vote.options[winningIndex] or "none"), "INFO", "VOTE")
+        end
     end
 
     if not cancelled then
@@ -128,7 +135,6 @@ local function FinishVote(id, vote, opts)
     BroadcastVoteEnd(id, counts, winningIndex, cancelled)
 end
 
--- Register a vote type with a finish callback
 function Dubz.Vote.RegisterType(name, def)
     Dubz.Vote.Types[name] = def
 end
@@ -140,15 +146,6 @@ function Dubz.Vote.Cancel(id, reason)
     return true
 end
 
--- Start a vote
--- id: string
--- data: {
---   question = "string",
---   options = { "Yes", "No", ... },
---   duration = number,
---   type = "job",
---   payload = table (custom stuff)
--- }
 function Dubz.Vote.Start(id, data)
     if not isstring(id) or id == "" then return end
     if not data or not istable(data) then return end
@@ -171,31 +168,32 @@ function Dubz.Vote.Start(id, data)
         question = tostring(data.question),
         options  = options,
         endTime  = CurTime() + duration,
-        votes    = {},           -- [ply] = choiceIndex
+        votes    = {},
         duration = duration,
         vtype    = data.type or "generic",
         payload  = data.payload or {},
         started  = CurTime()
     }
 
-    Dubz.Vote.Log("Started vote '" .. id .. "' (" .. data.question .. ")")
+    if Dubz.Vote.Log then Dubz.Vote.Log("Started vote '" .. id .. "' (" .. data.question .. ")") end
     SendVoteStart(Dubz.Vote.Active[id])
 end
 
--- Player cast vote
-net.Receive("Dubz_Vote_Cast", function(_, ply)
-    local id = net.ReadString()
-    local choice = net.ReadUInt(8)
-
+function Dubz.Vote.Cast(id, ply, choice)
     local v = Dubz.Vote.Active[id]
-    if not v then return end
+    if not v or not IsValid(ply) then return end
     if CurTime() >= v.endTime then return end
     if choice < 1 or choice > #v.options then return end
 
     v.votes[ply] = choice
+end
+
+net.Receive("Dubz_Vote_Cast", function(_, ply)
+    local id = net.ReadString()
+    local choice = net.ReadUInt(8)
+    Dubz.Vote.Cast(id, ply, choice)
 end)
 
--- Main Think hook
 hook.Add("Think", "Dubz_Vote_Think", function()
     for id, v in pairs(Dubz.Vote.Active) do
         if CurTime() >= v.endTime then
@@ -222,7 +220,7 @@ hook.Add("PlayerDisconnected", "Dubz_Vote_RemoveVotes", function(ply)
 end)
 
 -----------------------------------------------------------------------
--- JOB VOTE TYPE (replaces DarkRP job votes)
+-- Vote types
 -----------------------------------------------------------------------
 local function RegisterJobVoteType()
     if Dubz.Vote._JobTypeRegistered then return end
@@ -232,16 +230,13 @@ local function RegisterJobVoteType()
         OnFinish = function(v, counts, winner)
             local payload = v.payload or {}
             local ply = payload.ply
-            local jobCommand = payload.jobCommand
             local job = payload.job
-
             if not IsValid(ply) or not job then return end
 
             local yesIndex = payload.yesIndex or 1
-            local noIndex = payload.noIndex or 2
+            local noIndex  = payload.noIndex or 2
 
             if winner == yesIndex and (counts[yesIndex] or 0) > (counts[noIndex] or 0) then
-                -- re-check job validity / max players
                 local canSwitch, reason = hook.Call("playerCanChangeTeam", GAMEMODE, ply, job.team, true)
                 if canSwitch == false then
                     if reason then DarkRP.notify(ply, 1, 4, tostring(reason)) end
@@ -258,10 +253,6 @@ local function RegisterJobVoteType()
 
     Dubz.Vote._JobTypeRegistered = true
 end
-
-hook.Add("DarkRPFinishedLoading", "Dubz_Vote_RegisterJobType", RegisterJobVoteType)
-hook.Add("InitPostEntity", "Dubz_Vote_RegisterJobType_Init", RegisterJobVoteType)
-RegisterJobVoteType()
 
 Dubz.Vote.RegisterType("darkrp_legacy", {
     OnFinish = function(v, counts, winner)
@@ -336,9 +327,7 @@ Dubz.Vote.RegisterType("darkrp_mapvote", {
         local payload = v.payload or {}
         local maps = payload.maps or {}
         local targetMap = maps[winner]
-        if not targetMap or targetMap == "" then
-            return
-        end
+        if not targetMap or targetMap == "" then return end
         if isfunction(payload.callback) then
             local ok, err = pcall(payload.callback, targetMap, v, counts)
             if not ok then ErrorNoHalt("[DubzVote] Map vote callback error: " .. tostring(err) .. "\n") end
@@ -349,7 +338,7 @@ Dubz.Vote.RegisterType("darkrp_mapvote", {
 })
 
 -----------------------------------------------------------------------
--- JOB VOTE CONSOLE COMMAND: "dubz_jobvote jobCommand"
+-- Job vote command
 -----------------------------------------------------------------------
 local function RegisterJobVoteCommand()
     if Dubz.Vote._JobCommandRegistered then return end
@@ -364,7 +353,6 @@ local function RegisterJobVoteCommand()
         if DarkRP.getJobByCommand then
             job = DarkRP.getJobByCommand(jobCmd)
         else
-            -- fallback manual search
             for _, v in pairs(RPExtraTeams or {}) do
                 if v.command == jobCmd then
                     job = v
@@ -372,12 +360,12 @@ local function RegisterJobVoteCommand()
                 end
             end
         end
+
         if not job then
             DarkRP.notify(ply, 1, 4, "Invalid job.")
             return
         end
 
-        -- If job doesn't require vote, just change team directly
         if not job.vote then
             local canSwitch, reason = hook.Call("playerCanChangeTeam", GAMEMODE, ply, job.team, true)
             if canSwitch == false then
@@ -388,7 +376,6 @@ local function RegisterJobVoteCommand()
             return
         end
 
-        -- Start vote
         local id = string.format("job_%s_%s_%d", jobCmd, ply:SteamID64(), CurTime())
         local question = string.format("Allow %s to become %s?", ply:Nick(), job.name or jobCmd)
 
@@ -410,20 +397,20 @@ local function RegisterJobVoteCommand()
     Dubz.Vote._JobCommandRegistered = true
 end
 
+-----------------------------------------------------------------------
+-- DarkRP bridges
+-----------------------------------------------------------------------
 local function BridgeDarkRPVoting()
     if not DarkRP then return end
 
     if DarkRP.createVote and not Dubz.Vote._LegacyBridge then
         function DarkRP.createVote(question, voteTbl, callback, time, target, ...)
-        local opts = {}
-
-        if istable(voteTbl) then
-            for i, opt in ipairs(voteTbl) do
+            local opts = {}
+            for i, opt in ipairs(voteTbl or {}) do
                 opts[i] = (opt and (opt.vote or opt.name or opt.text or opt.label)) or ("Option " .. i)
             end
-        end
+            if #opts == 0 then opts = { "Yes", "No" } end
 
-        if #opts == 0 then opts = { "Yes", "No" } end
             local id = string.format("legacy_%s_%d", util.CRC(question or "vote"), CurTime())
             Dubz.Vote.Start(id, {
                 question = question or "Vote",
@@ -520,6 +507,9 @@ local function BridgeDarkRPVoting()
     end
 end
 
+-----------------------------------------------------------------------
+-- Bootstrap
+-----------------------------------------------------------------------
 local function EnsureDubzVote()
     RegisterJobVoteType()
     RegisterJobVoteCommand()

@@ -349,13 +349,14 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
                 g.graffiti.outlineSize  = g.graffiti.outlineSize  or 1
                 g.graffiti.shadowOffset = g.graffiti.shadowOffset or 2
                 g.graffiti.effect       = g.graffiti.effect       or "Clean"
+                g.graffiti.color        = g.graffiti.color        or g.color or { r = 255, g = 255, b = 255 }
 
                 ---------------------------------------------------------
                 -- FRAME
                 ---------------------------------------------------------
                 local frame = vgui.Create("DFrame")
                 frame:SetTitle("")
-                frame:SetSize(600, 290)
+                frame:SetSize(600, 420)
                 frame:Center()
                 frame:MakePopup()
                 frame.Paint = function(self, w, h)
@@ -366,21 +367,21 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
                 ---------------------------------------------------------
                 -- PREVIEW PANEL
                 ---------------------------------------------------------
-                local matBrick = Material("brick/brick_model", "smooth")
+                local bgMatName = g.graffiti.bgMat or "brick/brick_model"
 
                 local preview = vgui.Create("DPanel", frame)
                 preview:SetPos(20, 40)
                 preview:SetSize(260, 200)
                 preview.Paint = function(self, pw, ph)
                     -- BG
-                    surface.SetMaterial(matBrick)
+                    surface.SetMaterial(Material(bgMatName, "smooth"))
                     surface.SetDrawColor(255,255,255)
                     surface.DrawTexturedRect(0, 0, pw, ph)
 
                     local text  = g.graffiti.text or g.name or ""
                     local font  = g.graffiti.fontScaled or g.graffiti.font or "Trebuchet24"
                     local eff   = g.graffiti.effect or "Clean"
-                    local col   = g.color or { r = 255, g = 255, b = 255 }
+                    local col   = g.graffiti.color or g.color or { r = 255, g = 255, b = 255 }
 
                     local x = pw / 2
                     local y = ph / 2
@@ -550,8 +551,48 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
                 ---------------------------------------------------------
                 -- SAVE BUTTON
                 ---------------------------------------------------------
+                local bgBox = vgui.Create("DComboBox", frame)
+                bgBox:SetPos(300, 225)
+                bgBox:SetSize(260, 24)
+                bgBox:SetValue(g.graffiti.bgMat or "brick/brick_model")
+
+                local bgChoices = {
+                    "brick/brick_model",
+                    "models/debug/debugwhite",
+                    "models/props_c17/fisheyelens",
+                    "models/props/cs_assault/moneywrap03",
+                    "models/props_combine/stasisshield_sheet"
+                }
+                for _, choice in ipairs(bgChoices) do
+                    bgBox:AddChoice(choice)
+                end
+
+                bgBox.OnSelect = function(_, _, val)
+                    g.graffiti.bgMat = val
+                    bgMatName = val
+                    preview:InvalidateLayout(true)
+                end
+
+                ---------------------------------------------------------
+                -- COLOR MIXER
+                ---------------------------------------------------------
+                local colMixer = vgui.Create("DColorMixer", frame)
+                colMixer:SetPos(300, 255)
+                colMixer:SetSize(260, 100)
+                colMixer:SetPalette(true)
+                colMixer:SetAlphaBar(false)
+                colMixer:SetWangs(true)
+                colMixer:SetColor(Color(g.graffiti.color.r or 255, g.graffiti.color.g or 255, g.graffiti.color.b or 255))
+                colMixer.ValueChanged = function(_, col)
+                    g.graffiti.color = { r = col.r, g = col.g, b = col.b }
+                    preview:InvalidateLayout(true)
+                end
+
+                ---------------------------------------------------------
+                -- SAVE BUTTON
+                ---------------------------------------------------------
                 local saveBtn = vgui.Create("DButton", frame)
-                saveBtn:SetPos(20, 250)
+                saveBtn:SetPos(20, 365)
                 saveBtn:SetSize(540, 30)
                 saveBtn:SetText("")
                 saveBtn.Paint = function(_,w,h)
@@ -574,7 +615,8 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
                         effect       = g.graffiti.effect or "Clean",
                         outlineSize  = g.graffiti.outlineSize,
                         shadowOffset = g.graffiti.shadowOffset,
-                        bgMat        = g.graffiti.bgMat or "brick/brick_model"
+                        bgMat        = g.graffiti.bgMat or "brick/brick_model",
+                        color        = g.graffiti.color or g.color or { r = 255, g = 255, b = 255 }
                     })
                     net.SendToServer()
                     frame:Close()
