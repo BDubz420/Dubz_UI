@@ -2,6 +2,7 @@ Dubz = Dubz or {}
 
 -- Load Dubz UI config + core
 include("autorun/dubz_ui_config.lua")
+include("dubz_shared/sh_dubz_log.lua")
 include("dubz_menu/ui_helpers.lua")
 include("dubz_ui/themes.lua")
 
@@ -22,6 +23,8 @@ end)
 
 -- Core UI modules
 include("dubz_hud/cl_hud.lua")
+include("dubz_hud/cl_chat.lua")
+include("dubz_hud/cl_voice.lua")
 include("dubz_overhead/cl_overhead.lua")
 include("dubz_menu/cl_menu.lua")
 include("dubz_menu/tabs/cl_tab_dashboard.lua")
