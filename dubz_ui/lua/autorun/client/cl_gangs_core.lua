@@ -5,10 +5,15 @@
 
 Dubz = Dubz or {}
 Dubz.Gangs = Dubz.Gangs or {}
+Dubz.GangRevision = Dubz.GangRevision or 0
 
 local Gangs     = Dubz.Gangs
 local MyGangId  = ""
 local MyRank    = 0
+
+local function BumpGangRevision()
+    Dubz.GangRevision = (Dubz.GangRevision or 0) + 1
+end
 
 --------------------------------------------------------
 -- HELPER: Send actions to server
@@ -70,11 +75,11 @@ local function NormalizeGraffitiClient(g)
 
     g.graffiti.bgMat = g.graffiti.bgMat or "brick/brick_model"
 
-    local c = g.color or { r=255, g=255, b=255 }
+    local base = g.graffiti.color or g.color or { r=255, g=255, b=255 }
     g.graffiti.color = {
-        r = c.r or 255,
-        g = c.g or 255,
-        b = c.b or 255
+        r = math.Clamp(tonumber(base.r) or 255, 0, 255),
+        g = math.Clamp(tonumber(base.g) or 255, 0, 255),
+        b = math.Clamp(tonumber(base.b) or 255, 0, 255)
     }
 end
 
@@ -91,6 +96,7 @@ net.Receive("Dubz_Gang_FullSync", function()
     end
 
     hook.Run("Dubz_Gangs_FullSync", Gangs)
+    BumpGangRevision()
     Dubz.RefreshGangUI()
 end)
 
@@ -101,7 +107,12 @@ net.Receive("Dubz_Gang_MyStatus", function()
     MyGangId = net.ReadString() or ""
     MyRank   = net.ReadUInt(3) or 0
 
+    -- expose to other client files that rely on the globals
+    Dubz.MyGangId = MyGangId
+    Dubz.MyRank   = MyRank
+
     hook.Run("Dubz_Gangs_MyStatus", MyGangId, MyRank)
+    BumpGangRevision()
     Dubz.RefreshGangUI()
 end)
 
@@ -120,6 +131,7 @@ net.Receive("Dubz_Gang_Update", function()
     end
 
     hook.Run("Dubz_Gangs_GangUpdated", gid, Dubz.Gangs[gid])
+    BumpGangRevision()
     Dubz.RefreshGangUI()
 end)
 
