@@ -16,6 +16,22 @@ local function SaveTotals()
     file.Write(DATA_FILE, util.TableToJSON(totals, true))
 end
 
+local function BroadcastPlaytimeSnapshot(target, ply)
+    if not IsValid(ply) then return end
+    local base = ply:GetNW2Float("Dubz_TotalBase", 0)
+    local join = ply:GetNW2Float("Dubz_JoinTime", CurTime())
+
+    net.Start("Dubz_Playtime_Backfill")
+        net.WriteEntity(ply)
+        net.WriteFloat(base)
+        net.WriteFloat(join)
+    if IsValid(target) then
+        net.Send(target)
+    else
+        net.Broadcast()
+    end
+end
+
 -- When player spawns, set base + join time as NW2 for live UI
 hook.Add("PlayerInitialSpawn", "Dubz_Playtime_Init", function(ply)
     local sid64 = ply:SteamID64()
@@ -26,13 +42,16 @@ hook.Add("PlayerInitialSpawn", "Dubz_Playtime_Init", function(ply)
     ply:SetNW2Float("Dubz_TotalBase", base)
 
     -- small backfill ping for clients already open
-    timer.Simple(2, function()
+    timer.Simple(1.5, function()
         if not IsValid(ply) then return end
-        net.Start("Dubz_Playtime_Backfill")
-            net.WriteEntity(ply)
-            net.WriteFloat(base)
-            net.WriteFloat(ply.Dubz_JoinTime)
-        net.Broadcast()
+        BroadcastPlaytimeSnapshot(nil, ply)
+
+        -- send this new player every existing session so scoreboard is accurate instantly
+        for _, other in ipairs(player.GetAll()) do
+            if IsValid(other) then
+                BroadcastPlaytimeSnapshot(ply, other)
+            end
+        end
     end)
 end)
 
