@@ -400,6 +400,19 @@ hook.Add("Dubz_Gang_TerritoryPayout", "Dubz_Gang_TerritoryPayout_Handler", funct
         SaveGangs()
         RebuildRichestGangs()
         BroadcastUpdate(gangId)
+
+        local leaderSid = gang.leaderSid64
+        if leaderSid and leaderSid ~= "" then
+            for _, ply in ipairs(player.GetAll()) do
+                if IsValid(ply) and ply:SteamID64() == leaderSid then
+                    if DarkRP and DarkRP.notify then
+                        DarkRP.notify(ply, 0, 6, string.format("Territory income added $%d to the gang bank.", bankAmount))
+                    else
+                        ply:ChatPrint(string.format("[Gang] Territory income added $%d to the gang bank.", bankAmount))
+                    end
+                end
+            end
+        end
     end
 
     --------------------------------------------------
@@ -424,6 +437,8 @@ local function RebuildRichestGangs()
         Dubz.RichestGangs[g.name or gid] = math.floor(tonumber(g.bank or 0) or 0)
     end
 end
+_G.RebuildRichestGangs = RebuildRichestGangs
+Dubz.RebuildRichestGangs = RebuildRichestGangs
 
 local function FullResync(ply)
     if not IsValid(ply) then return end
@@ -614,6 +629,22 @@ local function SendInvite(target, fromPly, gid)
     net.Send(target)
 end
 
+local function BroadcastGangBanner(gid, text, col)
+    if not gid or gid == "" or not text or text == "" then return end
+    local recipients = {}
+    for _, ply in ipairs(player.GetAll()) do
+        if IsValid(ply) and Dubz.GangByMember[ply:SteamID64()] == gid then
+            table.insert(recipients, ply)
+        end
+    end
+    if #recipients == 0 then return end
+
+    net.Start("Dubz_Gang_Banner")
+        net.WriteString(text)
+        net.WriteColor(col or Color(255,255,255))
+    net.Send(recipients)
+end
+
 -- MAIN ACTIONS (client -> server)
 -- action: {cmd= "create/leave/disband/invite/accept/decline/promote/demote/kick/deposit/withdraw/setranktitle/setdesc/setcolor/declare_war/accept_war/forfeit_war"}
 net.Receive("Dubz_Gang_Action", function(_, ply)
@@ -785,6 +816,7 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         SaveGangs(); RebuildRichestGangs()
         BroadcastUpdate(inv.gid)
         SendFullSync(ply)
+        BroadcastGangBanner(inv.gid, ply:Nick() .. " joined " .. (g.name or "your gang"), Color(120,200,120))
         return
     end
     if act.cmd == "decline_invite" then
@@ -798,8 +830,10 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         local g = Dubz.Gangs[gid]; if not g or not targetSid or not g.members or not g.members[targetSid] then return end
         if targetSid == sid then return end
         if act.cmd == "kick" then
+            local kickedName = g.members[targetSid] and g.members[targetSid].name or "A member"
             g.members[targetSid] = nil
             Dubz.GangByMember[targetSid] = nil
+            BroadcastGangBanner(gid, kickedName .. " was removed", Color(255,120,120))
         else
             local cur = g.members[targetSid].rank or 1
             if act.cmd == "promote" then

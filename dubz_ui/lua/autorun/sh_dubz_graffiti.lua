@@ -168,7 +168,6 @@ function Dubz.Graffiti.Draw2D(x, y, w, h, gang)
     local text  = data.text  or gang.name or "Gang"
     local font  = data.font  or "Trebuchet24"
     local scale = tonumber(data.scale or 1)
-    local bgMat = data.bgMat or "brick/brick_model"
     local effect = data.effect or "Clean"
 
     ---------------------------------------------------------
@@ -194,13 +193,6 @@ function Dubz.Graffiti.Draw2D(x, y, w, h, gang)
     ---------------------------------------------------------
     local col = gang.color or { r = 255, g = 255, b = 255 }
     local mainColor = Color(col.r, col.g, col.b)
-
-    ---------------------------------------------------------
-    -- BACKGROUND MATERIAL
-    ---------------------------------------------------------
-    --surface.SetDrawColor(255, 255, 255, 255)
-    --surface.SetMaterial(GetMat(bgMat))
-    --surface.DrawTexturedRect(x, y, w, h)
 
     ---------------------------------------------------------
     -- TEXT POSITIONING
