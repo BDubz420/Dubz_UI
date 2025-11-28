@@ -17,20 +17,33 @@ end)
 local function paydayInfo(ply)
     local delay = (GAMEMODE and GAMEMODE.Config and GAMEMODE.Config.paydelay) or 300
     ply._DubzNextPay = ply._DubzNextPay or (CurTime() + delay)
-    ply._DubzSalary = (ply.getDarkRPVar and (ply:getDarkRPVar("salary") or 0)) or 0
-    if CurTime() >= ply._DubzNextPay then
-        surface.PlaySound(Dubz.Config.HUD.Payday.Sound or "items/suitchargeok1.wav")
-        local newMoney = ((ply.getDarkRPVar and ply:getDarkRPVar("money")) or 0) + (ply._DubzSalary or 0)
-        ply._DubzWalletAnimFrom = ply._DubzWalletAnimTo or ((ply.getDarkRPVar and ply:getDarkRPVar("money")) or 0)
-        ply._DubzWalletAnimTo = newMoney
-        ply._DubzWalletAnimStart = CurTime()
-        ply._DubzWalletAnimDur = Dubz.Config.HUD.Payday.AnimateWalletTime or 0.6
-        ply._DubzNextPay = CurTime() + delay
+    if ply._DubzSalary == nil then
+        ply._DubzSalary = (ply.getDarkRPVar and (ply:getDarkRPVar("salary") or 0)) or 0
     end
-    local remaining = math.max(0, ply._DubzNextPay - CurTime())
+    local remaining = math.max(0, (ply._DubzNextPay or CurTime()) - CurTime())
     local progress = 1 - math.Clamp(remaining / delay, 0, 1)
     return progress, ply._DubzSalary, remaining, delay
 end
+
+hook.Add("playerPaidSalary","DubzHUD_PaydayAlign", function(ply, amount)
+    if ply ~= LocalPlayer() then return end
+    local delay = (GAMEMODE and GAMEMODE.Config and GAMEMODE.Config.paydelay) or 300
+    ply._DubzNextPay = CurTime() + delay
+    ply._DubzSalary = amount or ((ply.getDarkRPVar and ply:getDarkRPVar("salary")) or 0)
+    local currentMoney = (ply.getDarkRPVar and ply:getDarkRPVar("money")) or ply._DubzWalletSmooth or 0
+    ply._DubzWalletAnimFrom = currentMoney
+    ply._DubzWalletAnimTo = currentMoney + (amount or 0)
+    ply._DubzWalletAnimStart = CurTime()
+    ply._DubzWalletAnimDur = Dubz.Config.HUD.Payday.AnimateWalletTime or 0.6
+    surface.PlaySound((Dubz.Config and Dubz.Config.HUD and Dubz.Config.HUD.Payday and Dubz.Config.HUD.Payday.Sound) or "items/suitchargeok1.wav")
+end)
+
+hook.Add("InitPostEntity","DubzHUD_PaydayInit", function()
+    local ply = LocalPlayer()
+    if not IsValid(ply) then return end
+    local delay = (GAMEMODE and GAMEMODE.Config and GAMEMODE.Config.paydelay) or 300
+    ply._DubzNextPay = CurTime() + delay
+end)
 
 local function formatMoney(n)
     local v = math.floor(tonumber(n) or 0)
@@ -48,6 +61,43 @@ hook.Add("HUDPaint","Dubz_ModernHUD", function()
     local h = cfg.Height or 148
     local w = cfg.Width or 420
     local y = ScrH() - h - (cfg.Margin or 20)
+
+    local topMargin = cfg.Margin or 20
+    local agendaText = (ply.getDarkRPVar and ply:getDarkRPVar("agenda")) or ""
+    if agendaText ~= "" then
+        local agendaW, agendaH = 260, 84
+        Dubz.DrawBubble(x, topMargin, agendaW, agendaH, Color(20,20,20,200))
+        local agendaTbl = ply.getAgendaTable and ply:getAgendaTable()
+        local agendaTitle = (agendaTbl and agendaTbl.Title) or "Agenda"
+        draw.SimpleText(agendaTitle, "DubzHUD_Small", x + 12, topMargin + 8, Color(255,255,255))
+        draw.DrawText(agendaText, "DubzHUD_Small", x + 12, topMargin + 28, Color(220,220,220), TEXT_ALIGN_LEFT)
+    end
+
+    local announcement = ""
+    if DarkRP and DarkRP.getGlobalVar then
+        announcement = DarkRP.getGlobalVar("DarkRP_Announcement") or ""
+    else
+        announcement = GetGlobalString("DarkRP_Announcement", "")
+    end
+    announcement = string.Trim(tostring(announcement or ""))
+    if announcement ~= "" then
+        local aw = 360
+        local ah = 52
+        local ax = (ScrW() / 2) - (aw / 2)
+        local ay = topMargin
+        Dubz.DrawBubble(ax, ay, aw, ah, Color(18,18,18,220))
+        draw.SimpleText("Announcement", "DubzHUD_Small", ax + 12, ay + 8, accent)
+        draw.DrawText(announcement, "DubzHUD_Small", ax + 12, ay + 26, Color(240,240,240), TEXT_ALIGN_LEFT)
+    end
+
+    local locked = (DarkRP and DarkRP.getGlobalVar and DarkRP.getGlobalVar("DarkRP_LockDown")) or GetGlobalBool("DarkRP_LockDown", false)
+    if locked then
+        local lw = ScrW() * 0.35
+        local lx = (ScrW() - lw) / 2
+        local ly = topMargin + 64
+        draw.RoundedBox(8, lx, ly, lw, 36, Color(160,20,20,220))
+        draw.SimpleText("LOCKDOWN IN EFFECT", "DubzHUD_Body", lx + lw/2, ly + 8, Color(255,255,255), TEXT_ALIGN_CENTER)
+    end
 
     draw.RoundedBox(cfg.CornerRadius or 12, x, y, w, h, Dubz.Colors.Background or Color(0,0,0,160))
     draw.RoundedBox(0, x, y, cfg.AccentBarWidth or 6, h, accent)
@@ -231,5 +281,84 @@ hook.Add("HUDPaint","Dubz_ModernHUD", function()
             Color(255,255,255,220),
             TEXT_ALIGN_RIGHT
         )
+    end
+end)
+
+local lawPanel, lawsOpen = nil, false
+
+local function ensureLawPanel()
+    if IsValid(lawPanel) then return lawPanel end
+    lawPanel = vgui.Create("DPanel")
+    lawPanel:SetSize(300, 32)
+    lawPanel:SetPos(ScrW() - 320, 80)
+    lawPanel:SetVisible(true)
+    lawPanel:SetMouseInputEnabled(false)
+    function lawPanel:Paint(w,h)
+        Dubz.DrawBubble(0,0,w,h, Color(15,15,15,220))
+        draw.SimpleText("Laws of the Land", "DubzHUD_Small", 12, 8, Color(255,255,255))
+    end
+    lawPanel.List = vgui.Create("DScrollPanel", lawPanel)
+    lawPanel.List:Dock(FILL)
+    lawPanel.List:DockMargin(12, 30, 12, 8)
+    return lawPanel
+end
+
+local function fetchLaws()
+    if DarkRP and DarkRP.getLaws then
+        return DarkRP.getLaws()
+    elseif GAMEMODE and GAMEMODE.Config and GAMEMODE.Config.DefaultLaws then
+        return GAMEMODE.Config.DefaultLaws
+    end
+    return {}
+end
+
+local function refreshLawPanel()
+    local pnl = ensureLawPanel()
+    if not IsValid(pnl.List) then return end
+    pnl.List:Clear()
+    local laws = fetchLaws()
+    if #laws == 0 then
+        local lbl = pnl.List:Add("DLabel")
+        lbl:SetText("No laws posted.")
+        lbl:Dock(TOP)
+        lbl:SetTall(20)
+        lbl:SetTextColor(Color(230,230,230))
+    else
+        for idx, law in ipairs(laws) do
+            local lbl = pnl.List:Add("DLabel")
+            lbl:SetText(idx .. ". " .. tostring(law))
+            lbl:SetTall(20)
+            lbl:SetTextColor(Color(235,235,235))
+            lbl:Dock(TOP)
+        end
+    end
+    local target = lawsOpen and math.Clamp(32 + (#laws * 24), 32, ScrH() * 0.6) or 32
+    pnl:SizeTo(pnl:GetWide(), target, 0.2, 0, 0.2)
+end
+
+local function toggleLaws()
+    lawsOpen = not lawsOpen
+    refreshLawPanel()
+end
+
+hook.Add("PlayerBindPress","Dubz_LawToggle", function(ply, bind, pressed)
+    if bind == "gm_showhelp" and pressed then
+        toggleLaws()
+        return true
+    end
+end)
+
+hook.Add("OnScreenSizeChanged","Dubz_LawResize", function()
+    if IsValid(lawPanel) then
+        lawPanel:SetPos(ScrW() - lawPanel:GetWide() - 20, 80)
+        if not lawsOpen then
+            lawPanel:SetTall(32)
+        end
+    end
+end)
+
+timer.Create("Dubz_LawRefresh", 6, 0, function()
+    if lawsOpen and IsValid(lawPanel) then
+        refreshLawPanel()
     end
 end)

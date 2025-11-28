@@ -19,27 +19,41 @@ function Dubz.OpenAdminWindow()
     local logs = vgui.Create("DPanel", tabs); logs:Dock(FILL)
     function logs:Paint(w,h) Dubz.DrawBubble(0,0,w,h, Color(24,24,24,220)) end
     local top = vgui.Create("DPanel", logs); top:Dock(TOP); top:SetTall(36)
-    local search = vgui.Create("DTextEntry", top); search:Dock(LEFT); search:SetWide(240); search:SetPlaceholderText("Search...")
-    local filter = vgui.Create("DComboBox", top); filter:Dock(LEFT); filter:SetWide(120); filter:AddChoice("ALL"); filter:AddChoice("INFO"); filter:AddChoice("WARN"); filter:AddChoice("ERROR"); filter:ChooseOptionID(1)
+    local search = vgui.Create("DTextEntry", top); search:Dock(LEFT); search:SetWide(200); search:SetPlaceholderText("Search...")
+    if Dubz.HookTextEntry then Dubz.HookTextEntry(search) end
+    local filter = vgui.Create("DComboBox", top); filter:Dock(LEFT); filter:SetWide(110); filter:AddChoice("ALL"); filter:AddChoice("INFO"); filter:AddChoice("WARN"); filter:AddChoice("ERROR"); filter:ChooseOptionID(1)
+    local catFilter = vgui.Create("DComboBox", top); catFilter:Dock(LEFT); catFilter:SetWide(110); catFilter:AddChoice("ALL"); catFilter:AddChoice("PLAYER"); catFilter:AddChoice("GANG"); catFilter:AddChoice("VOTE"); catFilter:AddChoice("TERRITORY"); catFilter:AddChoice("ADMIN"); catFilter:ChooseOptionID(1)
     local clear = vgui.Create("DButton", top); clear:Dock(RIGHT); clear:SetWide(80); clear:SetText("Clear")
     local export = vgui.Create("DButton", top); export:Dock(RIGHT); export:SetWide(80); export:SetText("Export")
 
     local list = vgui.Create("DListView", logs)
-    list:Dock(FILL); list:AddColumn("Time", 1); list:AddColumn("Level", 2); list:AddColumn("Message", 3)
+    list:Dock(FILL); list:AddColumn("Time", 1); list:AddColumn("Level", 2); list:AddColumn("Category", 3); list:AddColumn("Message", 4)
+
+    local function selectedValue(box)
+        local id = box:GetSelectedID()
+        if not id then return "ALL" end
+        return box:GetOptionText(id)
+    end
 
     local function refresh()
         list:Clear()
         local q = string.lower(search:GetValue() or "")
-        local level = filter:GetSelected() and select(1, filter:GetSelected()) or "ALL"
+        local level = selectedValue(filter)
+        local category = selectedValue(catFilter)
         for _, e in ipairs(Dubz.Logs or {}) do
-            if level ~= "ALL" and e.level ~= level then goto cont end
-            if q ~= "" and not string.find(string.lower(e.msg), q, 1, true) then goto cont end
-            list:AddLine(e.time or "??", e.level or "INFO", e.msg or "")
+            local lvl = string.upper(e.level or "INFO")
+            local cat = string.upper(e.cat or "GENERAL")
+            if level ~= "ALL" and lvl ~= level then goto cont end
+            if category ~= "ALL" and cat ~= category then goto cont end
+            if q ~= "" and not string.find(string.lower(e.msg or ""), q, 1, true) then goto cont end
+            local timeText = e.ts and os.date("%H:%M:%S", e.ts) or os.date("%H:%M:%S")
+            list:AddLine(timeText, lvl, cat, e.msg or "")
             ::cont::
         end
     end
     search.OnValueChange = refresh
     filter.OnSelect = function() refresh() end
+    catFilter.OnSelect = function() refresh() end
     clear.DoClick = function()
         Dubz.Logs = {}
         if file.Exists("dubz_ui/logs.txt","DATA") then file.Write("dubz_ui/logs.txt","") end
@@ -49,7 +63,8 @@ function Dubz.OpenAdminWindow()
         if not file.Exists("dubz_ui","DATA") then file.CreateDir("dubz_ui") end
         local buff = ""
         for _, e in ipairs(Dubz.Logs or {}) do
-            buff = buff .. string.format("[%s] [%s] %s\n", e.time, e.level, e.msg)
+            local timeText = e.ts and os.date("%Y-%m-%d %H:%M:%S", e.ts) or os.date("%Y-%m-%d %H:%M:%S")
+            buff = buff .. string.format("[%s] [%s/%s] %s\n", timeText, e.level or "INFO", e.cat or "GENERAL", e.msg or "")
         end
         file.Write("dubz_ui/logs_export.txt", buff)
         chat.AddText(Color(60,255,90), "[DubzUI] Logs exported to data/dubz_ui/logs_export.txt")
