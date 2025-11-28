@@ -73,17 +73,23 @@ local function SanitizeGang(gid, gang)
 
     gang.bank  = math.max(0, tonumber(gang.bank) or 0)
     gang.color = gang.color or { r = 255, g = 255, b = 255 }
+    gang.leaderSid64 = Dubz.GetSID64(gang.leaderSid64)
 
+    local sanitizedMembers = {}
     gang.members = gang.members or {}
     for sid64, member in pairs(gang.members) do
-        if type(sid64) ~= "string" or not istable(member) then
-            gang.members[sid64] = nil
-        else
-            member.name   = tostring(member.name or "Member")
-            member.rank   = math.Clamp(tonumber(member.rank) or Dubz.GangRanks.Member, 1, Dubz.GangRanks.Leader)
-            member.joined = tonumber(member.joined) or os.time()
+        if istable(member) then
+            local strSid = Dubz.GetSID64(sid64)
+            if strSid and strSid ~= "" then
+                sanitizedMembers[strSid] = {
+                    name   = tostring(member.name or "Member"),
+                    rank   = math.Clamp(tonumber(member.rank) or Dubz.GangRanks.Member, 1, Dubz.GangRanks.Leader),
+                    joined = tonumber(member.joined) or os.time()
+                }
+            end
         end
     end
+    gang.members = sanitizedMembers
 
     gang.rankTitles = gang.rankTitles or table.Copy(Dubz.DefaultRankTitles)
 
@@ -109,8 +115,9 @@ local function RebuildGangByMember()
     for gid, gang in pairs(Dubz.Gangs or {}) do
         if istable(gang.members) then
             for sid64, _ in pairs(gang.members) do
-                if type(sid64) == "string" then
-                    Dubz.GangByMember[sid64] = gid
+                local strSid = Dubz.GetSID64(sid64)
+                if strSid and strSid ~= "" then
+                    Dubz.GangByMember[strSid] = gid
                 end
             end
         end

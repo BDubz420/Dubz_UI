@@ -19,6 +19,10 @@ local function BumpGangRevision()
     Dubz.GangRevision = (Dubz.GangRevision or 0) + 1
 end
 
+local function BumpGangRevision()
+    Dubz.GangRevision = (Dubz.GangRevision or 0) + 1
+end
+
 --------------------------------------------------------
 -- HELPER: Send actions to server
 --------------------------------------------------------
