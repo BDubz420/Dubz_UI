@@ -94,34 +94,6 @@ local function GetGangTerritories(gid)
     return list
 end
 
--- Ensure graffiti fonts exist before drawing to avoid nil width/height errors
-local _graffitiFonts = {}
-local function EnsureGraffitiFont(g)
-    if not g then return "Trebuchet24" end
-
-    g.graffiti = g.graffiti or {}
-    g.graffiti.font = g.graffiti.font or "Trebuchet24"
-    g.graffiti.scale = g.graffiti.scale or 1
-
-    local name = g.graffiti.fontScaled or ("DubzGraffiti_Font_" .. math.floor(g.graffiti.scale * 100))
-    g.graffiti.fontScaled = name
-
-    if not _graffitiFonts[name] then
-        surface.CreateFont(name, {
-            font      = g.graffiti.font,
-            size      = math.max(16, math.floor(24 * g.graffiti.scale)),
-            weight    = 800,
-            antialias = true
-        })
-        _graffitiFonts[name] = true
-    end
-
-    return name
-end
-
--- expose for any reloaded panels that reference the helper
-Dubz.EnsureGraffitiFont = EnsureGraffitiFont
-
 local lastRevision = -1
 
 local function QueueMenuRefresh(force)
