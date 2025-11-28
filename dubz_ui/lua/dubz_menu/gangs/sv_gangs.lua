@@ -8,10 +8,6 @@ local DATA_FILE = DATA_DIR .. "/gangs.json"
 
 Dubz.GangByMember = Dubz.GangByMember or {} -- sid64 -> gangId
 
--- forward declarations for helpers referenced before definition
-local SaveGangs
-local RebuildRichestGangs
-
 local function normalizeVec(tbl)
     if not istable(tbl) then return { x = 0, y = 0, z = 0 } end
     if tbl.x then
@@ -232,39 +228,6 @@ local function RefreshGangNWForAll()
     end
 end
 
-local function SendMyStatus(ply, forcedGid)
-    if not IsValid(ply) then return end
-
-    local sid = ply:SteamID64()
-    local gid = forcedGid or Dubz.GangByMember[sid]
-    local g   = gid and Dubz.Gangs[gid] or nil
-
-    local r = 0
-    if g and g.members and g.members[sid] then
-        r = g.members[sid].rank or 1
-    end
-
-    local name, vec
-    if g then
-        local c = g.color or { r = 255, g = 255, b = 255 }
-        name = g.name or ""
-        vec = Vector((c.r or 255) / 255, (c.g or 255) / 255, (c.b or 255) / 255)
-    else
-        name = ""
-        vec = Vector(1, 1, 1)
-    end
-
-    ply:SetNWString("DubzGang", name)
-    ply:SetNWVector("DubzGangColor", vec)
-
-    print(string.format("[Dubz Gangs] MyStatus -> %s gid=%s rank=%d", ply:Nick(), gid or "", r or 0))
-
-    net.Start("Dubz_Gang_MyStatus")
-        net.WriteString(gid or "")
-        net.WriteUInt(r, 3)
-    net.Send(ply)
-end
-
 local function SaveGangs()
     if not istable(Dubz.Gangs) then
         Dubz.Gangs = {}
@@ -359,7 +322,36 @@ local function SendFullSync(ply)
         net.WriteTable(toSend)
     net.Send(ply)
 
-    SendMyStatus(ply)
+    --------------------------------------------
+    -- Player personal gang status + NW vars
+    --------------------------------------------
+    local sid = ply:SteamID64()
+    local gid = Dubz.GangByMember[sid]
+    local g   = gid and Dubz.Gangs[gid] or nil
+
+    local name, vec
+    if g then
+        local c = g.color or { r = 255, g = 255, b = 255 }
+        name = g.name or ""
+        vec = Vector((c.r or 255) / 255, (c.g or 255) / 255, (c.b or 255) / 255)
+    else
+        name = ""
+        vec = Vector(1, 1, 1)
+    end
+
+    ply:SetNWString("DubzGang", name)
+    ply:SetNWVector("DubzGangColor", vec)
+
+    local r = 0
+    if g and g.members and g.members[sid] then
+        r = g.members[sid].rank or 1
+    end
+    print(string.format("[Dubz Gangs] MyStatus -> %s gid=%s rank=%d", ply:Nick(), gid or "", r or 0))
+
+    net.Start("Dubz_Gang_MyStatus")
+        net.WriteString(gid or "")
+        net.WriteUInt(r, 3)
+    net.Send(ply)
 end
 
 local function BroadcastUpdate(gid)
@@ -433,9 +425,61 @@ local function RebuildRichestGangs()
     end
 end
 
-hook.Add("PlayerInitialSpawn","Dubz_Gangs_InitSync", function(ply)
-    timer.Simple(2, function()
-        if IsValid(ply) then SendFullSync(ply) end
+local function FullResync(ply)
+    if not IsValid(ply) then return end
+
+    -- Send full gangs table
+    SendFullSync(ply)
+
+    -- And send their personal gang status again to ensure client cache is correct
+    local sid = ply:SteamID64()
+    local gid = Dubz.GangByMember[sid]
+    local rank = 0
+
+    if gid and Dubz.Gangs[gid] and Dubz.Gangs[gid].members and Dubz.Gangs[gid].members[sid] then
+        rank = Dubz.Gangs[gid].members[sid].rank or 1
+    end
+
+    net.Start("Dubz_Gang_MyStatus")
+        net.WriteString(gid or "")
+        net.WriteUInt(rank, 3)
+    net.Send(ply)
+end
+
+hook.Add("PlayerInitialSpawn", "Dubz_Gangs_ExtraSync", function(ply)
+    timer.Simple(3, function()
+        if not IsValid(ply) then return end
+        FullResync(ply)
+    end)
+end)
+
+hook.Add("PlayerSpawn", "Dubz_Gangs_FinalSpawnSync", function(ply)
+    timer.Simple(0.3, function()
+        if not IsValid(ply) then return end
+        FullResync(ply)
+    end)
+end)
+
+hook.Add("PlayerLoadout", "Dubz_Gangs_LoadoutSync", function(ply)
+    timer.Simple(0.2, function()
+        if not IsValid(ply) then return end
+        FullResync(ply)
+    end)
+end)
+
+hook.Add("PlayerFullyLoaded", "Dubz_Gangs_PlayerFullyLoadedSync", function(ply)
+    timer.Simple(0.2, function()
+        if IsValid(ply) then
+            FullResync(ply)
+        end
+    end)
+end)
+
+hook.Add("playerFullyLoaded", "Dubz_Gangs_playerFullyLoadedSync_DarkRP", function(ply)
+    timer.Simple(0.2, function()
+        if IsValid(ply) then
+            FullResync(ply)
+        end
     end)
 end)
 
@@ -485,6 +529,56 @@ local function CanWithdrawFromBank(ply, gid)
     local m = g.members[sid]
     local r = m and (m.rank or 1) or 0
     return r >= minRank
+end
+
+local function PromoteNewLeader(gid)
+    local g = Dubz.Gangs[gid]
+    if not g or not g.members then return end
+
+    local candidatesByRank = {}
+    local highestRank = 0
+
+    for sid, m in pairs(g.members) do
+        local r = m.rank or Dubz.GangRanks.Member
+        if r > highestRank then
+            highestRank = r
+            candidatesByRank = { sid }
+        elseif r == highestRank then
+            table.insert(candidatesByRank, sid)
+        end
+    end
+
+    if #candidatesByRank == 0 then
+        return
+    end
+
+    local newLeaderSid
+
+    if highestRank <= Dubz.GangRanks.Member then
+        -- Everyone is just a Member -> pick randomly
+        newLeaderSid = candidatesByRank[math.random(#candidatesByRank)]
+    else
+        -- Higher ranks exist: pick the oldest join date among the highest rank
+        local bestSid = candidatesByRank[1]
+        local bestJoined = g.members[bestSid].joined or os.time()
+
+        for _, sid in ipairs(candidatesByRank) do
+            local joined = g.members[sid].joined or os.time()
+            if joined < bestJoined then
+                bestSid = sid
+                bestJoined = joined
+            end
+        end
+
+        newLeaderSid = bestSid
+    end
+
+    if not newLeaderSid then return end
+
+    g.leaderSid64 = newLeaderSid
+    g.members[newLeaderSid].rank = Dubz.GangRanks.Leader
+
+    print(string.format("[Dubz Gangs] New leader for %s is %s", tostring(gid), tostring(newLeaderSid)))
 end
 
 -- MONEY helpers
@@ -563,7 +657,7 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
                 }
             },
 
-            -- No active war initially
+            -- No active war initially (runtime-only)
             wars = {
                 active = false,
                 enemy  = nil
@@ -582,7 +676,6 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         SaveGangs()
         RebuildRichestGangs()
         BroadcastUpdate(gid)
-        SendMyStatus(ply, gid)
         SendFullSync(ply)
         return
     end
@@ -592,24 +685,50 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
     -- LEAVE
     if act.cmd == "leave" and gid then
         local g = Dubz.Gangs[gid]; if not g then return end
-        if g.leaderSid64 == sid then
-            -- leader leaving: if alone -> disband; else deny
-            local count = 0; for _ in pairs(g.members or {}) do count = count + 1 end
-            if count <= 1 then
-                Dubz.Gangs[gid] = nil
-                for m,_ in pairs(Dubz.GangByMember) do if Dubz.GangByMember[m] == gid then Dubz.GangByMember[m] = nil end end
-                SaveGangs(); RebuildRichestGangs()
-                net.Start("Dubz_Gang_Update") net.WriteString(gid) net.WriteTable({}) net.Broadcast()
-            else
-                -- deny; leader must /disband or /promote someone first
-                return
-            end
-        else
+
+        -- Remove this player from the gang first
+        if g.members then
             g.members[sid] = nil
-            Dubz.GangByMember[sid] = nil
-            SaveGangs(); RebuildRichestGangs()
-            BroadcastUpdate(gid); SendFullSync(ply)
         end
+        Dubz.GangByMember[sid] = nil
+
+        -- Count remaining members
+        local remaining = 0
+        for _ in pairs(g.members or {}) do
+            remaining = remaining + 1
+        end
+
+        if remaining == 0 then
+            -- No one left in the gang -> delete it
+            Dubz.Gangs[gid] = nil
+            for m, _ in pairs(Dubz.GangByMember) do
+                if Dubz.GangByMember[m] == gid then
+                    Dubz.GangByMember[m] = nil
+                end
+            end
+
+            SaveGangs()
+            RebuildRichestGangs()
+
+            net.Start("Dubz_Gang_Update")
+                net.WriteString(gid)
+                net.WriteTable({})
+            net.Broadcast()
+
+            print("[Dubz Gangs] Gang " .. tostring(gid) .. " removed (last member left).")
+            return
+        end
+
+        -- If the leaving player was the leader, promote a new one
+        if g.leaderSid64 == sid then
+            PromoteNewLeader(gid)
+        end
+
+        SaveGangs()
+        RebuildRichestGangs()
+        BroadcastUpdate(gid)
+        SendFullSync(ply)
+
         return
     end
 
@@ -640,7 +759,7 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         return
     end
 
-    -- INVITE (leader only as requested)
+    -- INVITE (leader only as requested / or officer if config says so)
     if act.cmd == "invite" and gid and CanInvite(ply, gid) then
         local target = act.target and player.GetBySteamID64(tostring(act.target)) or nil
         if not IsValid(target) then return end
@@ -856,7 +975,7 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         return
     end
 
-    -- WARS
+    -- WARS (non-persistent basic system)
     if CFG.Wars and CFG.Wars.Enabled then
         if act.cmd == "declare_war" and gid and IsLeader(ply, gid) then
             local enemy = tostring(act.enemy or "")
@@ -939,7 +1058,16 @@ net.Receive("Dubz_Gang_RequestSync", function(_, ply)
                 net.WriteTable(Dubz.Gangs or {})
             net.Send(ply)
 
-            SendMyStatus(ply)
+            local sid = ply:SteamID64()
+            net.Start("Dubz_Gang_MyStatus")
+                net.WriteString(Dubz.GangByMember[sid] or "")
+                local gid = Dubz.GangByMember[sid]
+                local r = 0
+                if gid and Dubz.Gangs[gid] and Dubz.Gangs[gid].members and Dubz.Gangs[gid].members[sid] then
+                    r = Dubz.Gangs[gid].members[sid].rank or 1
+                end
+                net.WriteUInt(r, 3)
+            net.Send(ply)
         end
     end)
 end)
