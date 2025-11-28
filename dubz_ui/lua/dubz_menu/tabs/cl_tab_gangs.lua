@@ -18,13 +18,19 @@ local function SendAction(tbl)
 end
 
 local function GetMyGang()
+    if Dubz.GetMyGang then
+        return Dubz.GetMyGang()
+    end
     return (Dubz.MyGangId ~= "" and Dubz.Gangs[Dubz.MyGangId]) or nil
 end
 
 local function IsLeaderC()
+    if Dubz.IsLeaderC then
+        return Dubz.IsLeaderC()
+    end
     local g = GetMyGang()
     if not g then return false end
-    return Dubz.MyRank >= Dubz.GangRanks.Leader
+    return (Dubz.MyRank or 0) >= Dubz.GangRanks.Leader
 end
 
 -- Simple UI refresh helper so the active panel can re-layout when data changes
@@ -50,6 +56,23 @@ local function GetGangTerritories(gid)
 
     local list = {}
 
+    local g = Dubz.Gangs and Dubz.Gangs[gid]
+    if g and istable(g.territories) then
+        for _, info in pairs(g.territories) do
+            local name = tostring(info and info.name or "")
+            if name ~= "" then
+                table.insert(list, name)
+            end
+        end
+    end
+
+    if #list > 0 then
+        table.sort(list, function(a, b)
+            return string.lower(a) < string.lower(b)
+        end)
+        return list
+    end
+
     -- Use the graffiti territory entity as the source of truth
     for _, ent in ipairs(ents.FindByClass("ent_dubz_graffiti_spot")) do
         if IsValid(ent) and ent.GetOwnerGangId and ent:GetOwnerGangId() == gid then
@@ -71,52 +94,24 @@ local function GetGangTerritories(gid)
     return list
 end
 
---------------------------------------------------------
--- Networking
---------------------------------------------------------
-net.Receive("Dubz_Gang_FullSync", function()
-    Dubz.Gangs = net.ReadTable() or {}
+local lastRevision = -1
+
+local function QueueMenuRefresh(force)
+    local rev = (Dubz and Dubz.GangRevision) or 0
+    if not force and rev == lastRevision then return end
+    lastRevision = rev
+
     RefreshGangUI()
-end)
-
-net.Receive("Dubz_Gang_MyStatus", function()
-    Dubz.MyGangId = net.ReadString() or ""
-    Dubz.MyRank   = net.ReadUInt(3) or 0
-    RefreshGangUI()
-end)
-
-net.Receive("Dubz_Gang_Update", function()
-    local gid  = net.ReadString()
-    local data = net.ReadTable() or {}
-
-    Dubz.Gangs = Dubz.Gangs or {}
-    if data and data.id then
-        Dubz.Gangs[gid] = data
-    else
-        Dubz.Gangs[gid] = nil
+    if Dubz and Dubz.RequestMenuRefresh then
+        Dubz.RequestMenuRefresh("gangs")
     end
+end
 
-    RefreshGangUI()
+hook.Add("Dubz_Gangs_FullSync", "Dubz_Gangs_Tab_FullRefresh", function()
+    QueueMenuRefresh(true)
 end)
-
-net.Receive("Dubz_Gang_Invite", function()
-    local gid   = net.ReadString()
-    local gname = net.ReadString() or "Gang"
-    local from  = net.ReadString() or "Leader"
-
-    Derma_Query(from .. " invited you to join '"..gname.."'", "Gang Invite",
-        "Accept", function()
-            net.Start("Dubz_Gang_Action")
-            net.WriteTable({cmd="accept_invite"})
-            net.SendToServer()
-        end,
-        "Decline", function()
-            net.Start("Dubz_Gang_Action")
-            net.WriteTable({cmd="decline_invite"})
-            net.SendToServer()
-        end
-    )
-end)
+hook.Add("Dubz_Gangs_MyStatus", "Dubz_Gangs_Tab_StatusRefresh", QueueMenuRefresh)
+hook.Add("Dubz_Gangs_GangUpdated", "Dubz_Gangs_Tab_UpdateRefresh", QueueMenuRefresh)
 
 --------------------------------------------------------
 -- UI drawing helpers
@@ -354,13 +349,14 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
                 g.graffiti.outlineSize  = g.graffiti.outlineSize  or 1
                 g.graffiti.shadowOffset = g.graffiti.shadowOffset or 2
                 g.graffiti.effect       = g.graffiti.effect       or "Clean"
+                g.graffiti.color        = g.graffiti.color        or g.color or { r = 255, g = 255, b = 255 }
 
                 ---------------------------------------------------------
                 -- FRAME
                 ---------------------------------------------------------
                 local frame = vgui.Create("DFrame")
                 frame:SetTitle("")
-                frame:SetSize(600, 290)
+                frame:SetSize(600, 420)
                 frame:Center()
                 frame:MakePopup()
                 frame.Paint = function(self, w, h)
@@ -371,21 +367,21 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
                 ---------------------------------------------------------
                 -- PREVIEW PANEL
                 ---------------------------------------------------------
-                local matBrick = Material("brick/brick_model", "smooth")
+                local bgMatName = g.graffiti.bgMat or "brick/brick_model"
 
                 local preview = vgui.Create("DPanel", frame)
                 preview:SetPos(20, 40)
                 preview:SetSize(260, 200)
                 preview.Paint = function(self, pw, ph)
                     -- BG
-                    surface.SetMaterial(matBrick)
+                    surface.SetMaterial(Material(bgMatName, "smooth"))
                     surface.SetDrawColor(255,255,255)
                     surface.DrawTexturedRect(0, 0, pw, ph)
 
                     local text  = g.graffiti.text or g.name or ""
                     local font  = g.graffiti.fontScaled or g.graffiti.font or "Trebuchet24"
                     local eff   = g.graffiti.effect or "Clean"
-                    local col   = g.color or { r = 255, g = 255, b = 255 }
+                    local col   = g.graffiti.color or g.color or { r = 255, g = 255, b = 255 }
 
                     local x = pw / 2
                     local y = ph / 2
@@ -555,8 +551,48 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
                 ---------------------------------------------------------
                 -- SAVE BUTTON
                 ---------------------------------------------------------
+                local bgBox = vgui.Create("DComboBox", frame)
+                bgBox:SetPos(300, 225)
+                bgBox:SetSize(260, 24)
+                bgBox:SetValue(g.graffiti.bgMat or "brick/brick_model")
+
+                local bgChoices = {
+                    "brick/brick_model",
+                    "models/debug/debugwhite",
+                    "models/props_c17/fisheyelens",
+                    "models/props/cs_assault/moneywrap03",
+                    "models/props_combine/stasisshield_sheet"
+                }
+                for _, choice in ipairs(bgChoices) do
+                    bgBox:AddChoice(choice)
+                end
+
+                bgBox.OnSelect = function(_, _, val)
+                    g.graffiti.bgMat = val
+                    bgMatName = val
+                    preview:InvalidateLayout(true)
+                end
+
+                ---------------------------------------------------------
+                -- COLOR MIXER
+                ---------------------------------------------------------
+                local colMixer = vgui.Create("DColorMixer", frame)
+                colMixer:SetPos(300, 255)
+                colMixer:SetSize(260, 100)
+                colMixer:SetPalette(true)
+                colMixer:SetAlphaBar(false)
+                colMixer:SetWangs(true)
+                colMixer:SetColor(Color(g.graffiti.color.r or 255, g.graffiti.color.g or 255, g.graffiti.color.b or 255))
+                colMixer.ValueChanged = function(_, col)
+                    g.graffiti.color = { r = col.r, g = col.g, b = col.b }
+                    preview:InvalidateLayout(true)
+                end
+
+                ---------------------------------------------------------
+                -- SAVE BUTTON
+                ---------------------------------------------------------
                 local saveBtn = vgui.Create("DButton", frame)
-                saveBtn:SetPos(20, 250)
+                saveBtn:SetPos(20, 365)
                 saveBtn:SetSize(540, 30)
                 saveBtn:SetText("")
                 saveBtn.Paint = function(_,w,h)
@@ -579,7 +615,8 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
                         effect       = g.graffiti.effect or "Clean",
                         outlineSize  = g.graffiti.outlineSize,
                         shadowOffset = g.graffiti.shadowOffset,
-                        bgMat        = g.graffiti.bgMat or "brick/brick_model"
+                        bgMat        = g.graffiti.bgMat or "brick/brick_model",
+                        color        = g.graffiti.color or g.color or { r = 255, g = 255, b = 255 }
                     })
                     net.SendToServer()
                     frame:Close()
@@ -1216,6 +1253,8 @@ end
 --------------------------------------------------------
 -- Tab Registration
 --------------------------------------------------------
+Dubz._GangTabSynced = Dubz._GangTabSynced or false
+
 Dubz.RegisterTab("gangs", Dubz.Config.Gangs.TabTitle or "Gangs", "users", function(parent)
     if not (Dubz.Config.Gangs and Dubz.Config.Gangs.Enabled) then return end
 
@@ -1324,7 +1363,9 @@ Dubz.RegisterTab("gangs", Dubz.Config.Gangs.TabTitle or "Gangs", "users", functi
         self:SetTall(math.max(y + 32, parent:GetTall() + 32))
     end
 
-    -- Request fresh sync when opened
-    net.Start("Dubz_Gang_RequestSync")
-    net.SendToServer()
+    if not Dubz._GangTabSynced then
+        net.Start("Dubz_Gang_RequestSync")
+        net.SendToServer()
+        Dubz._GangTabSynced = true
+    end
 end)

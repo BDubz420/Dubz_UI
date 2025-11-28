@@ -1,11 +1,10 @@
---[[
 Dubz = Dubz or {}
 Dubz.Vote = Dubz.Vote or {}
 Dubz.Vote.Active = Dubz.Vote.Active or {}
 Dubz.Vote.Config = Dubz.Vote.Config or {}
 
 -- Default settings
-Dubz.Vote.Config.DefaultDuration = 15 -- seconds
+Dubz.Vote.Config.DefaultDuration = Dubz.Vote.Config.DefaultDuration or 15 -- seconds
 
 -- Helper to log
 function Dubz.Vote.Log(msg)
@@ -15,4 +14,3 @@ function Dubz.Vote.Log(msg)
         print("[DubzVote] " .. msg)
     end
 end
---]]
