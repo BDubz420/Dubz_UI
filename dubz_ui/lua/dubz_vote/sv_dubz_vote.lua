@@ -405,15 +405,10 @@ local function BridgeDarkRPVoting()
 
     if DarkRP.createVote and not Dubz.Vote._LegacyBridge then
         function DarkRP.createVote(question, voteTbl, callback, time, target, ...)
-            local rawVotes = istable(voteTbl) and voteTbl or {}
-
             local opts = {}
-            if istable(rawVotes) then
-                for i, opt in ipairs(rawVotes) do
-                    opts[i] = (opt and (opt.vote or opt.name or opt.text or opt.label)) or ("Option " .. i)
-                end
+            for i, opt in ipairs(voteTbl or {}) do
+                opts[i] = (opt and (opt.vote or opt.name or opt.text or opt.label)) or ("Option " .. i)
             end
-
             if #opts == 0 then opts = { "Yes", "No" } end
 
             local id = string.format("legacy_%s_%d", util.CRC(question or "vote"), CurTime())
@@ -423,7 +418,7 @@ local function BridgeDarkRPVoting()
                 duration = time or 20,
                 type     = "darkrp_legacy",
                 payload  = {
-                    rawOptions = rawVotes,
+                    rawOptions = voteTbl,
                     callback   = callback,
                     target     = target,
                     extraArgs  = {...}

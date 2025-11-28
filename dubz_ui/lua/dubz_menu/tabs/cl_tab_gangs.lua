@@ -94,14 +94,6 @@ local function GetGangTerritories(gid)
     return list
 end
 
--- Ensure graffiti fonts exist before drawing to avoid nil width/height errors
-local function EnsureGraffitiFontSafe(g)
-    if Dubz and Dubz.EnsureGraffitiFont then
-        return Dubz.EnsureGraffitiFont(g)
-    end
-    return "Trebuchet24"
-end
-
 local lastRevision = -1
 
 local function QueueMenuRefresh(force)
@@ -304,7 +296,7 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
             local gang = GetMyGang()
             if not gang then return end
 
-            local font = EnsureGraffitiFontSafe(gang)
+            local font = EnsureGraffitiFont(gang)
 
             if Dubz.Graffiti and Dubz.Graffiti.Draw2D then
                 Dubz.Graffiti.Draw2D(0, 0, pw, ph, gang)
@@ -349,6 +341,7 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
                 if not g then return end
 
                 g.graffiti = g.graffiti or {}
+                g.graffiti.bgMat        = g.graffiti.bgMat        or "brick/brick_model"
                 g.graffiti.scale        = g.graffiti.scale        or 1
                 g.graffiti.outlineSize  = g.graffiti.outlineSize  or 1
                 g.graffiti.shadowOffset = g.graffiti.shadowOffset or 2
@@ -371,12 +364,19 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
                 ---------------------------------------------------------
                 -- PREVIEW PANEL
                 ---------------------------------------------------------
+                local bgMatName = g.graffiti.bgMat or "brick/brick_model"
+
                 local preview = vgui.Create("DPanel", frame)
                 preview:SetPos(20, 40)
                 preview:SetSize(260, 200)
                 preview.Paint = function(self, pw, ph)
+                    -- BG
+                    surface.SetMaterial(Material(bgMatName, "smooth"))
+                    surface.SetDrawColor(255,255,255)
+                    surface.DrawTexturedRect(0, 0, pw, ph)
+
                     local text  = g.graffiti.text or g.name or ""
-                    local font  = EnsureGraffitiFontSafe(g)
+                    local font  = g.graffiti.fontScaled or g.graffiti.font or "Trebuchet24"
                     local eff   = g.graffiti.effect or "Clean"
                     local col   = g.graffiti.color or g.color or { r = 255, g = 255, b = 255 }
 
@@ -439,7 +439,7 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
                 fontBox.OnSelect = function(_,_,val)
                 g.graffiti.font = val
                 g.graffiti.fontScaled = nil
-                EnsureGraffitiFontSafe(g)
+                EnsureGraffitiFont(g)
                 preview:InvalidateLayout(true)
                 end
 
@@ -458,7 +458,7 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
                 scale.OnValueChanged = function(_, val)
                     g.graffiti.scale = val
                     g.graffiti.fontScaled = nil
-                    EnsureGraffitiFontSafe(g)
+                    EnsureGraffitiFont(g)
                     preview:InvalidateLayout(true)
                 end
 
@@ -528,6 +528,28 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
                 ---------------------------------------------------------
                 -- SAVE BUTTON
                 ---------------------------------------------------------
+                local bgBox = vgui.Create("DComboBox", frame)
+                bgBox:SetPos(300, 225)
+                bgBox:SetSize(260, 24)
+                bgBox:SetValue(g.graffiti.bgMat or "brick/brick_model")
+
+                local bgChoices = {
+                    "brick/brick_model",
+                    "models/debug/debugwhite",
+                    "models/props_c17/fisheyelens",
+                    "models/props/cs_assault/moneywrap03",
+                    "models/props_combine/stasisshield_sheet"
+                }
+                for _, choice in ipairs(bgChoices) do
+                    bgBox:AddChoice(choice)
+                end
+
+                bgBox.OnSelect = function(_, _, val)
+                    g.graffiti.bgMat = val
+                    bgMatName = val
+                    preview:InvalidateLayout(true)
+                end
+
                 ---------------------------------------------------------
                 -- COLOR MIXER
                 ---------------------------------------------------------
@@ -570,6 +592,7 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
                         effect       = g.graffiti.effect or "Clean",
                         outlineSize  = g.graffiti.outlineSize,
                         shadowOffset = g.graffiti.shadowOffset,
+                        bgMat        = g.graffiti.bgMat or "brick/brick_model",
                         color        = g.graffiti.color or g.color or { r = 255, g = 255, b = 255 }
                     })
                     net.SendToServer()

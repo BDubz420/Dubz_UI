@@ -15,41 +15,32 @@ local function BumpGangRevision()
     Dubz.GangRevision = (Dubz.GangRevision or 0) + 1
 end
 
--- Shared graffiti font bootstrapper (kept global so UI reloads always see it)
-if not Dubz.EnsureGraffitiFont then
-    function Dubz.EnsureGraffitiFont(g)
-        if not g then return "Trebuchet24" end
+local function BumpGangRevision()
+    Dubz.GangRevision = (Dubz.GangRevision or 0) + 1
+end
 
-        g.graffiti = g.graffiti or {}
-        g.graffiti.font  = g.graffiti.font or "Trebuchet24"
-        g.graffiti.scale = tonumber(g.graffiti.scale) or 1
+local function BumpGangRevision()
+    Dubz.GangRevision = (Dubz.GangRevision or 0) + 1
+end
 
-        Dubz._GraffitiFonts = Dubz._GraffitiFonts or {}
-        if not Dubz._GraffitiFonts[g.graffiti.font] then
-            surface.CreateFont(g.graffiti.font, {
-                font = g.graffiti.font,
-                size = 24,
-                weight = 600,
-                antialias = true
-            })
-            Dubz._GraffitiFonts[g.graffiti.font] = true
-        end
+local function BumpGangRevision()
+    Dubz.GangRevision = (Dubz.GangRevision or 0) + 1
+end
 
-        local name = g.graffiti.fontScaled or ("DubzGraffiti_Font_" .. math.floor(g.graffiti.scale * 100))
-        g.graffiti.fontScaled = name
+local function BumpGangRevision()
+    Dubz.GangRevision = (Dubz.GangRevision or 0) + 1
+end
 
-        if not Dubz._GraffitiFonts[name] then
-            surface.CreateFont(name, {
-                font      = g.graffiti.font,
-                size      = math.max(16, math.floor(24 * g.graffiti.scale)),
-                weight    = 800,
-                antialias = true
-            })
-            Dubz._GraffitiFonts[name] = true
-        end
+local function BumpGangRevision()
+    Dubz.GangRevision = (Dubz.GangRevision or 0) + 1
+end
 
-        return name
-    end
+local function BumpGangRevision()
+    Dubz.GangRevision = (Dubz.GangRevision or 0) + 1
+end
+
+local function BumpGangRevision()
+    Dubz.GangRevision = (Dubz.GangRevision or 0) + 1
 end
 
 --------------------------------------------------------
@@ -65,13 +56,13 @@ end
 -- HELPER: My Gang / Rank
 --------------------------------------------------------
 function Dubz.GetMyGang()
-    return (MyGangId ~= "" and Gangs[MyGangId]) or nil
+    return (Dubz.MyGangId ~= "" and Gangs[Dubz.MyGangId]) or nil
 end
 
 function Dubz.IsLeaderC()
     local g = Dubz.GetMyGang()
     if not g then return false end
-    return MyRank >= (Dubz.GangRanks.Leader or 3)
+    return (Dubz.MyRank or 0) >= (Dubz.GangRanks.Leader or 3)
 end
 
 --------------------------------------------------------
@@ -93,8 +84,7 @@ function Dubz.RefreshGangUI()
 end
 
 --------------------------------------------------------
--- CLIENTSIDE Normalize
--- (Fixes missing graffiti.key fields)
+-- CLIENTSIDE graffiti normalize
 --------------------------------------------------------
 local function NormalizeGraffitiClient(g)
     g.graffiti = g.graffiti or {}
@@ -103,12 +93,17 @@ local function NormalizeGraffitiClient(g)
     g.graffiti.font   = g.graffiti.font   or "Trebuchet24"
     g.graffiti.scale  = tonumber(g.graffiti.scale) or 1
     g.graffiti.effect = g.graffiti.effect or "Clean"
-    g.graffiti.outlineSize = tonumber(g.graffiti.outlineSize) or 1
-    g.graffiti.shadowOffset = tonumber(g.graffiti.shadowOffset) or 2
+
+    -- extra cosmetics with sane defaults
+    g.graffiti.outlineSize   = tonumber(g.graffiti.outlineSize) or 1
+    g.graffiti.shadowOffset  = tonumber(g.graffiti.shadowOffset) or 2
+    g.graffiti.bgMat         = g.graffiti.bgMat or "brick/brick_model"
 
     g.graffiti.fontScaled =
         g.graffiti.fontScaled or
         ("DubzGraffiti_Font_" .. math.floor(g.graffiti.scale * 100))
+
+    g.graffiti.bgMat = g.graffiti.bgMat or "brick/brick_model"
 
     local base = g.graffiti.color or g.color or { r=255, g=255, b=255 }
     g.graffiti.color = {
@@ -183,56 +178,33 @@ net.Receive("Dubz_Gang_Invite", function()
         "Gang Invite",
 
         "Accept", function()
-            Dubz.SendGangAction({cmd="accept_invite"})
+            Dubz.SendGangAction({ cmd = "accept_invite" })
         end,
 
         "Decline", function()
-            Dubz.SendGangAction({cmd="decline_invite"})
+            Dubz.SendGangAction({ cmd = "decline_invite" })
         end
     )
 end)
 
 --------------------------------------------------------
--- GANG BANNERS (join/leave)
+-- HUD SUPPORT HELPERS
 --------------------------------------------------------
-local banners = {}
-net.Receive("Dubz_Gang_Banner", function()
-    local msg = net.ReadString() or ""
-    local col = net.ReadColor() or Color(255,255,255)
-    if msg == "" then return end
-    table.insert(banners, {
-        msg   = msg,
-        col   = col,
-        start = CurTime(),
-        dur   = 4
-    })
-end)
 
-hook.Add("HUDPaint", "Dubz_Gang_Banner_Draw", function()
-    if #banners == 0 then return end
-    local now = CurTime()
-    local y = 32
-    for i = #banners, 1, -1 do
-        local b = banners[i]
-        local t = (now - b.start)
-        if t > b.dur then
-            table.remove(banners, i)
-        else
-            local alpha = 1
-            if t > b.dur - 0.8 then
-                alpha = math.Clamp((b.dur - t) / 0.8, 0, 1)
-            end
-            local w, h = 320, 36
-            local x = (ScrW() - w) * 0.5
-            surface.SetAlphaMultiplier(alpha)
-            if Dubz.DrawBubble then
-                Dubz.DrawBubble(x, y, w, h, Color(18,18,18,220))
-            else
-                draw.RoundedBox(8, x, y, w, h, Color(18,18,18,220))
-            end
-            draw.SimpleText(b.msg, "DubzHUD_Small", x + w/2, y + h/2 - 2, Color(b.col.r, b.col.g, b.col.b, 255 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-            surface.SetAlphaMultiplier(1)
-            y = y + h + 6
-        end
-    end
-end)
+function Dubz.GetGangName(ply)
+    if ply ~= LocalPlayer() then return nil end
+    if not Dubz.MyGangId or Dubz.MyGangId == "" then return nil end
+
+    local g = Dubz.Gangs[Dubz.MyGangId]
+    return g and g.name or nil
+end
+
+function Dubz.GetGangColor(ply)
+    if ply ~= LocalPlayer() then return Color(255,255,255) end
+    if not Dubz.MyGangId or Dubz.MyGangId == "" then return Color(255,255,255) end
+
+    local g = Dubz.Gangs[Dubz.MyGangId]
+    if not g or not g.color then return Color(255,255,255) end
+
+    return Color(g.color.r or 255, g.color.g or 255, g.color.b or 255)
+end
