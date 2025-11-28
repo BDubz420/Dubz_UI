@@ -296,18 +296,15 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
             local gang = GetMyGang()
             if not gang then return end
 
-            if Dubz.DrawBubble then
-                Dubz.DrawBubble(0, 0, pw, ph, Color(0,0,0,180))
-            else
-                draw.RoundedBox(8, 0, 0, pw, ph, Color(0,0,0,180))
-            end
+            local font = EnsureGraffitiFont(gang)
 
             if Dubz.Graffiti and Dubz.Graffiti.Draw2D then
                 Dubz.Graffiti.Draw2D(0, 0, pw, ph, gang)
             else
                 draw.SimpleText(
                     gang.name or "Gang",
-                    "DubzHUD_Header", pw / 2, ph / 2,
+                    font,
+                    pw / 2, ph / 2,
                     Color(255,255,255),
                     TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER
                 )
@@ -440,20 +437,10 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
                 end
 
                 fontBox.OnSelect = function(_,_,val)
-                    g.graffiti.font = val
-
-                    -- re-create scaled font if we have a scale
-                    local scaleVal = g.graffiti.scale or 1
-                    g.graffiti.fontScaled = "DubzGraffiti_Font_" .. math.floor(scaleVal * 100)
-
-                    surface.CreateFont(g.graffiti.fontScaled, {
-                        font = g.graffiti.font or "Trebuchet24",
-                        size = math.floor(24 * scaleVal),
-                        weight = 800,
-                        antialias = true
-                    })
-
-                    preview:InvalidateLayout(true)
+                g.graffiti.font = val
+                g.graffiti.fontScaled = nil
+                EnsureGraffitiFont(g)
+                preview:InvalidateLayout(true)
                 end
 
                 ---------------------------------------------------------
@@ -470,18 +457,8 @@ local function DrawGraffitiPreview(pnl, w, y, accent, g)
 
                 scale.OnValueChanged = function(_, val)
                     g.graffiti.scale = val
-
-                    -- create dynamic font name
-                    g.graffiti.fontScaled = "DubzGraffiti_Font_" .. math.floor(val * 100)
-
-                    -- register dynamic font
-                    surface.CreateFont(g.graffiti.fontScaled, {
-                        font = g.graffiti.font or "Trebuchet24",
-                        size = math.floor(24 * val),  -- scale actual pixel size
-                        weight = 800,
-                        antialias = true
-                    })
-
+                    g.graffiti.fontScaled = nil
+                    EnsureGraffitiFont(g)
                     preview:InvalidateLayout(true)
                 end
 

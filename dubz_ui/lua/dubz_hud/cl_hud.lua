@@ -1124,3 +1124,82 @@ timer.Create("Dubz_LawRefresh", 6, 0, function()
         refreshLawPanel()
     end
 end)
+
+local lawPanel, lawsOpen = nil, false
+
+local function ensureLawPanel()
+    if IsValid(lawPanel) then return lawPanel end
+    lawPanel = vgui.Create("DPanel")
+    lawPanel:SetSize(300, 32)
+    lawPanel:SetPos(ScrW() - 320, 80)
+    lawPanel:SetVisible(true)
+    lawPanel:SetMouseInputEnabled(false)
+    function lawPanel:Paint(w,h)
+        Dubz.DrawBubble(0,0,w,h, Color(15,15,15,220))
+        draw.SimpleText("Laws of the Land", "DubzHUD_Small", 12, 8, Color(255,255,255))
+    end
+    lawPanel.List = vgui.Create("DScrollPanel", lawPanel)
+    lawPanel.List:Dock(FILL)
+    lawPanel.List:DockMargin(12, 30, 12, 8)
+    return lawPanel
+end
+
+local function fetchLaws()
+    if DarkRP and DarkRP.getLaws then
+        return DarkRP.getLaws()
+    elseif GAMEMODE and GAMEMODE.Config and GAMEMODE.Config.DefaultLaws then
+        return GAMEMODE.Config.DefaultLaws
+    end
+    return {}
+end
+
+local function refreshLawPanel()
+    local pnl = ensureLawPanel()
+    if not IsValid(pnl.List) then return end
+    pnl.List:Clear()
+    local laws = fetchLaws()
+    if #laws == 0 then
+        local lbl = pnl.List:Add("DLabel")
+        lbl:SetText("No laws posted.")
+        lbl:Dock(TOP)
+        lbl:SetTall(20)
+        lbl:SetTextColor(Color(230,230,230))
+    else
+        for idx, law in ipairs(laws) do
+            local lbl = pnl.List:Add("DLabel")
+            lbl:SetText(idx .. ". " .. tostring(law))
+            lbl:SetTall(20)
+            lbl:SetTextColor(Color(235,235,235))
+            lbl:Dock(TOP)
+        end
+    end
+    local target = lawsOpen and math.Clamp(32 + (#laws * 24), 32, ScrH() * 0.6) or 32
+    pnl:SizeTo(pnl:GetWide(), target, 0.2, 0, 0.2)
+end
+
+local function toggleLaws()
+    lawsOpen = not lawsOpen
+    refreshLawPanel()
+end
+
+hook.Add("PlayerBindPress","Dubz_LawToggle", function(ply, bind, pressed)
+    if bind == "gm_showhelp" and pressed then
+        toggleLaws()
+        return true
+    end
+end)
+
+hook.Add("OnScreenSizeChanged","Dubz_LawResize", function()
+    if IsValid(lawPanel) then
+        lawPanel:SetPos(ScrW() - lawPanel:GetWide() - 20, 80)
+        if not lawsOpen then
+            lawPanel:SetTall(32)
+        end
+    end
+end)
+
+timer.Create("Dubz_LawRefresh", 6, 0, function()
+    if lawsOpen and IsValid(lawPanel) then
+        refreshLawPanel()
+    end
+end)
