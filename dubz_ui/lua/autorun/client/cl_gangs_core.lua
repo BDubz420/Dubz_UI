@@ -28,13 +28,13 @@ end
 -- HELPER: My Gang / Rank
 --------------------------------------------------------
 function Dubz.GetMyGang()
-    return (MyGangId ~= "" and Gangs[MyGangId]) or nil
+    return (Dubz.MyGangId ~= "" and Gangs[Dubz.MyGangId]) or nil
 end
 
 function Dubz.IsLeaderC()
     local g = Dubz.GetMyGang()
     if not g then return false end
-    return MyRank >= (Dubz.GangRanks.Leader or 3)
+    return (Dubz.MyRank or 0) >= (Dubz.GangRanks.Leader or 3)
 end
 
 --------------------------------------------------------
@@ -56,8 +56,7 @@ function Dubz.RefreshGangUI()
 end
 
 --------------------------------------------------------
--- CLIENTSIDE Normalize
--- (Fixes missing graffiti.key fields)
+-- CLIENTSIDE graffiti normalize
 --------------------------------------------------------
 local function NormalizeGraffitiClient(g)
     g.graffiti = g.graffiti or {}
@@ -66,8 +65,11 @@ local function NormalizeGraffitiClient(g)
     g.graffiti.font   = g.graffiti.font   or "Trebuchet24"
     g.graffiti.scale  = tonumber(g.graffiti.scale) or 1
     g.graffiti.effect = g.graffiti.effect or "Clean"
-    g.graffiti.outlineSize = tonumber(g.graffiti.outlineSize) or 1
-    g.graffiti.shadowOffset = tonumber(g.graffiti.shadowOffset) or 2
+
+    -- extra cosmetics with sane defaults
+    g.graffiti.outlineSize   = tonumber(g.graffiti.outlineSize) or 1
+    g.graffiti.shadowOffset  = tonumber(g.graffiti.shadowOffset) or 2
+    g.graffiti.bgMat         = g.graffiti.bgMat or "brick/brick_model"
 
     g.graffiti.fontScaled =
         g.graffiti.fontScaled or
@@ -144,11 +146,33 @@ net.Receive("Dubz_Gang_Invite", function()
         "Gang Invite",
 
         "Accept", function()
-            Dubz.SendGangAction({cmd="accept_invite"})
+            Dubz.SendGangAction({ cmd = "accept_invite" })
         end,
 
         "Decline", function()
-            Dubz.SendGangAction({cmd="decline_invite"})
+            Dubz.SendGangAction({ cmd = "decline_invite" })
         end
     )
 end)
+
+--------------------------------------------------------
+-- HUD SUPPORT HELPERS
+--------------------------------------------------------
+
+function Dubz.GetGangName(ply)
+    if ply ~= LocalPlayer() then return nil end
+    if not Dubz.MyGangId or Dubz.MyGangId == "" then return nil end
+
+    local g = Dubz.Gangs[Dubz.MyGangId]
+    return g and g.name or nil
+end
+
+function Dubz.GetGangColor(ply)
+    if ply ~= LocalPlayer() then return Color(255,255,255) end
+    if not Dubz.MyGangId or Dubz.MyGangId == "" then return Color(255,255,255) end
+
+    local g = Dubz.Gangs[Dubz.MyGangId]
+    if not g or not g.color then return Color(255,255,255) end
+
+    return Color(g.color.r or 255, g.color.g or 255, g.color.b or 255)
+end

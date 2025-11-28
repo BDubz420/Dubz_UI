@@ -87,11 +87,14 @@ local function FlushPendingVotes()
     end
 end
 
-local function DrawBubble(x, y, w, h, col)
+--------------------------------------------------------
+-- Helper: DrawBubble fallback
+--------------------------------------------------------
+local function DrawBubble(x,y,w,h,col)
     if Dubz.DrawBubble then
-        Dubz.DrawBubble(x, y, w, h, col)
+        Dubz.DrawBubble(x,y,w,h,col)
     else
-        draw.RoundedBox(12, x, y, w, h, col)
+        draw.RoundedBox(12,x,y,w,h,col)
     end
 end
 
@@ -134,9 +137,9 @@ function Dubz.Vote.OpenPanel(id, question, options, duration, suppressQueue)
     local parentW = container:GetWide()
     local offsetY = 50 + (#container:GetChildren() - 1) * 12
 
-    p:SetPos(parentW, offsetY)
-    p:MoveTo(parentW - 360 - 20, offsetY, 0.25, 0, 0.2)
-    p:AlphaTo(255, 0.2)
+    for w in string.gmatch(base or "", "%S+") do
+        table.insert(segments, { text = w, col = baseCol })
+    end
 
     function p:SlideOut()
         if self.Closing then return end
@@ -154,98 +157,326 @@ function Dubz.Vote.OpenPanel(id, question, options, duration, suppressQueue)
         end
     end
 
-    function p:Paint(w, h)
-        DrawBubble(0, 0, w, h, Color(25,25,25,240))
-
-        local frac = math.Clamp((self.EndTime - CurTime()) / self.Duration, 0, 1)
-        surface.SetDrawColor(accent)
-        surface.DrawRect(0, 0, w * frac, 5)
-
-        draw.SimpleText(question, "DubzHUD_Header", w/2, 60, Color(255,255,255), TEXT_ALIGN_CENTER)
+    if #segments == 0 and question ~= "" then
+        table.insert(segments, { text = question, col = baseCol })
     end
 
-    local btnPanel = vgui.Create("DPanel", p)
-    btnPanel:Dock(BOTTOM)
-    btnPanel:SetTall(44)
-    btnPanel:DockMargin(0, 6, 0, 8)
-    btnPanel.Paint = nil
+    return segments
+end
 
-    local function MakeButton(text, index)
-        local b = vgui.Create("DButton", btnPanel)
-        b:SetSize(150, 32)
-        b:SetText("")
-        b.ChoiceIndex = index
+local function MeasureQuestionHeight(question, font, maxWidth)
+    local segments = BuildQuestionSegments(question)
+    if #segments == 0 then return 0 end
 
-        function b:Paint(w, h)
-            local col = self:IsHovered()
-                and Color(accent.r+15, accent.g+15, accent.b+15)
-                or  accent
-            draw.RoundedBox(8,0,0,w,h,col)
-            draw.SimpleText(text, "DubzHUD_Small", w/2, h/2, Color(255,255,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    surface.SetFont(font)
+    local _, lineH = surface.GetTextSize("Ay")
+    local spaceW   = surface.GetTextSize(" ")
+    local lineWidth = 0
+    local lineCount = 1
+
+    for _, seg in ipairs(segments) do
+        local w = surface.GetTextSize(seg.text)
+        local add = (lineWidth > 0 and spaceW or 0) + w
+
+        if lineWidth > 0 and (lineWidth + add) > maxWidth then
+            lineCount = lineCount + 1
+            lineWidth = w
+        else
+            lineWidth = lineWidth + add
+        end
+    end
+
+    return lineCount * lineH
+end
+
+local function DrawWrappedQuestion(question, font, x, startY, maxWidth)
+    local segments = BuildQuestionSegments(question)
+    if #segments == 0 then return startY end
+
+    surface.SetFont(font)
+    local _, lineH = surface.GetTextSize("Ay")
+    local spaceW   = surface.GetTextSize(" ")
+
+    local cursorX, cursorY = x, startY
+    local lineWidth = 0
+
+    for _, seg in ipairs(segments) do
+        local wordW = surface.GetTextSize(seg.text)
+        local add   = (lineWidth > 0 and spaceW or 0) + wordW
+
+        if lineWidth > 0 and (lineWidth + add) > maxWidth then
+            lineWidth = 0
+            cursorX   = x
+            cursorY   = cursorY + lineH
         end
 
-        function b:OnCursorEntered()
-            surface.PlaySound("buttons/lightswitch2.wav")
+        if lineWidth > 0 then
+            cursorX = cursorX + spaceW
+        end
+
+        draw.SimpleText(seg.text, font, cursorX, cursorY, seg.col)
+        cursorX   = cursorX + wordW
+        lineWidth = lineWidth + add
+    end
+
+    return cursorY + lineH
+end
+
+--------------------------------------------------------
+-- Reposition vote panels (oldest → newest)
+--------------------------------------------------------
+local function Dubz_RepositionVotes()
+    local sorted = {}
+
+    for _, pnl in pairs(VotePanels) do
+        if IsValid(pnl) then table.insert(sorted, pnl) end
+    end
+
+    table.sort(sorted, function(a,b)
+        return (a.SortIndex or 0) < (b.SortIndex or 0)
+    end)
+
+    local y = 60
+    for _, pnl in ipairs(sorted) do
+        if IsValid(pnl) then
+            pnl:SetPos(ScrW() - pnl:GetWide() - 20, y)
+            y = y + pnl:GetTall() + 8
+        end
+    end
+
+    if Dubz_UpdateLawsPanelPosition then
+        Dubz_UpdateLawsPanelPosition()
+    end
+end
+
+--------------------------------------------------------
+-- Laws panel offset (uses global lawPanel from HUD)
+--------------------------------------------------------
+function Dubz_UpdateLawsPanelPosition()
+    if not IsValid(lawPanel) then return end
+
+    local count = 0
+    for _, pnl in pairs(VotePanels) do
+        if IsValid(pnl) then count = count + 1 end
+    end
+
+    lawPanel:SetPos(
+        ScrW() - lawPanel:GetWide() - 20,
+        120 + (count * 110)
+    )
+end
+
+--------------------------------------------------------
+-- Show F3 hint while votes active
+--------------------------------------------------------
+hook.Add("HUDPaint", "Dubz_VoteUnlockHint", function()
+    if not next(VotePanels) then return end
+
+    for _, pnl in pairs(VotePanels) do
+        if IsValid(pnl) then
+            DrawDubzHint_Centered("F3", "Unlock Mouse", pnl:GetWide())
+            break
+        end
+    end
+end)
+
+--------------------------------------------------------
+-- Where to parent vote panels
+--------------------------------------------------------
+local function GetVoteParent()
+    local root = vgui.GetWorldPanel and vgui.GetWorldPanel() or nil
+    if not IsValid(root) then return nil end
+    return root
+end
+
+--------------------------------------------------------
+-- Create a vote UI panel
+--------------------------------------------------------
+function Dubz.Vote.OpenPanel(id, question, options, duration, suppressQueue)
+    question = tostring(question or "")
+
+    local lp = LocalPlayer()
+    if not IsValid(lp) then return end
+
+    local localName   = lp:Nick()
+    local isInitiator = string.StartWith(question, localName)
+
+    -- Initiator does NOT see the vote UI box
+    if isInitiator then return end
+
+    local parent = GetVoteParent()
+    if not IsValid(parent) then
+        if not suppressQueue then
+            PendingVotes[id] = {
+                id       = id,
+                question = question,
+                options  = options,
+                duration = duration
+            }
+        end
+        return
+    end
+
+    if IsValid(VotePanels[id]) then
+        VotePanels[id]:Remove()
+        VotePanels[id] = nil
+    end
+
+    local panelWidth     = 360
+    local textPaddingTop = 18
+    local textSpacing    = 4
+    local btnPanelH      = 38
+    local bottomMargin   = 8
+    local maxTextW       = panelWidth - 28
+
+    local textHeight = MeasureQuestionHeight(question, "DubzHUD_Header", maxTextW)
+    if textHeight <= 0 then textHeight = 24 end
+
+    local panelHeight = textPaddingTop + textHeight + textSpacing + btnPanelH + bottomMargin
+
+    -------------------------------------------
+    -- CLEAN VOTE PANEL (NO INVISIBLE BLOCKERS)
+    -------------------------------------------
+    local p = vgui.Create("DPanel", parent)
+    p:SetSize(panelWidth, panelHeight)
+    p:SetAlpha(0)
+    p:SetMouseInputEnabled(true)      -- panel receives mouse
+    p:SetKeyboardInputEnabled(false)
+    p.Question = question
+    p.Duration = duration or 15
+    p.EndTime  = CurTime() + p.Duration
+    p.Id       = id
+
+    Dubz.Vote._Index = (Dubz.Vote._Index or 0) + 1
+    p.SortIndex = Dubz.Vote._Index
+
+    -------------------------------------------
+    -- SLIDE-IN ANIMATION
+    -------------------------------------------
+    local startX = ScrW()
+    local endX   = ScrW() - p:GetWide() - 20
+
+    p:SetPos(startX, 60)
+    p:MoveTo(endX, 60, 0.20, 0, 0.1, function()
+        if IsValid(p) then
+            p:SetAlpha(255)
+            Dubz_RepositionVotes()
+        end
+    end)
+
+    function p:SlideOut()
+        if self.Closing then return end
+        self.Closing = true
+
+        self:MoveTo(self.x + 40, self.y, 0.15, 0, 0.15)
+        self:AlphaTo(0, 0.15, 0, function()
+            if IsValid(self) then
+                VotePanels[self.Id] = nil
+                self:Remove()
+                Dubz_RepositionVotes()
+            end
+        end)
+    end
+
+    function p:Think()
+        if CurTime() >= self.EndTime then
+            self:SlideOut()
+        end
+    end
+
+    -------------------------------------------
+    -- PAINT: TEXT + ACCENT BAR ONLY
+    -- Nothing here receives mouse input
+    -------------------------------------------
+    function p:Paint(w, h)
+        DrawBubble(0, 0, w, h, Color(0, 0, 0, 190))
+
+        local accent = Dubz.GetAccentColor and Dubz.GetAccentColor() or Color(37,150,190)
+        draw.RoundedBox(0, 0, 0, 6, h, accent)
+
+        local textX = 14
+        local textY = textPaddingTop
+        local maxW  = w - 28
+
+        -- draw wrapped question text
+        local bottomY = DrawWrappedQuestion(self.Question, "DubzHUD_Header", textX, textY, maxW)
+
+        -- draw timer on same row as buttons
+        surface.SetFont("DubzHUD_Small")
+        local _, timerH = surface.GetTextSize("00:00")
+
+        local rowTop = h - btnPanelH - bottomMargin + (btnPanelH - timerH) * 0.5
+        local remainStr = ("00:%02d"):format(math.max(0, math.floor(self.EndTime - CurTime())))
+
+        draw.SimpleText(
+            remainStr,
+            "DubzHUD_Small",
+            textX,
+            rowTop,
+            Color(210,210,210)
+        )
+    end
+
+    -------------------------------------------
+    -- BUTTON ROW (TRUE INTERACTIVE LAYER)
+    -------------------------------------------
+    local btnBase = vgui.Create("DPanel", p)
+    btnBase:Dock(BOTTOM)
+    btnBase:SetTall(btnPanelH)
+    btnBase:DockMargin(0, 0, 0, bottomMargin)
+    btnBase:SetPaintBackground(false)
+    btnBase:SetMouseInputEnabled(true)    -- ensures buttons receive input ONLY here
+
+    local function MakeBtn(text, idx, col)
+        local b = vgui.Create("DButton", btnBase)
+        b:SetText("")
+        b:SetSize(110, 30)
+        b:SetZPos(9999)                   -- ensure buttons are always above text
+        b:SetMouseInputEnabled(true)
+
+        function b:Paint(w, h)
+            local hovered = self:IsHovered()
+            local c = hovered and Color(col.r + 20, col.g + 20, col.b + 20) or col
+
+            draw.RoundedBox(6, 0, 0, w, h, c)
+            draw.SimpleText(
+                text,
+                "DubzHUD_Small",
+                w/2, h/2,
+                Color(255,255,255),
+                TEXT_ALIGN_CENTER,
+                TEXT_ALIGN_CENTER
+            )
         end
 
         function b:DoClick()
-            surface.PlaySound("buttons/button15.wav")
-            Dubz.Vote.Cast(id, self.ChoiceIndex)
+            Dubz.Vote.Cast(id, idx)
             p:SlideOut()
         end
 
         return b
     end
 
-    if #options == 2 and
-       string.find(string.lower(options[1] or ""), "yes", 1, true) and
-       string.find(string.lower(options[2] or ""), "no", 1, true) then
+    -------------------------------------------
+    -- BUTTONS
+    -------------------------------------------
+    local yes = MakeBtn("Yes", 1, Color(30,160,60))
+    local no  = MakeBtn("No", 2, Color(170,40,40))
 
-        local yes = MakeButton("YES", 1)
-        yes:SetPos(20, 6)
-
-        local no = MakeButton("NO", 2)
-        no:SetPos(360 - 20 - 150, 6)
-    else
-        local spacing = 10
-        local btnWidth = math.max(90, math.min(150,
-            (p:GetWide() - 40 - spacing * (#options - 1)) / #options
-        ))
-
-        local totalW = btnWidth * #options + spacing * (#options - 1)
-        local startX = (p:GetWide() - totalW) / 2
-        local x = startX
-
-        for i, opt in ipairs(options) do
-            local b = MakeButton(opt or "Option", i)
-            b:SetSize(btnWidth, 32)
-            b:SetPos(x, 6)
-            x = x + btnWidth + spacing
-        end
-    end
-
-    function p:Think()
-        if not self.Closing and CurTime() >= self.EndTime then
-            self:SlideOut()
-        end
-    end
+    yes:SetPos(p:GetWide() - 240, 4)
+    no:SetPos (p:GetWide() - 120, 4)
 
     VotePanels[id] = p
+    Dubz_RepositionVotes()
 end
 
--- Send vote choice
-function Dubz.Vote.Cast(id, choice)
-    net.Start("Dubz_Vote_Cast")
-        net.WriteString(id)
-        net.WriteUInt(choice, 8)
-    net.SendToServer()
-end
-
--- Receive start from server
+--------------------------------------------------------
+-- DarkRP notifications for vote start
+--------------------------------------------------------
 net.Receive("Dubz_Vote_Start", function()
-    local id = net.ReadString()
+    local id       = net.ReadString()
     local question = net.ReadString()
-    local count = net.ReadUInt(8)
+    local count    = net.ReadUInt(8)
 
     local options = {}
     for i = 1, count do
