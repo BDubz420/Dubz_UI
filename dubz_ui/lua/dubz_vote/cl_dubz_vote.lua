@@ -253,6 +253,12 @@ function Dubz.Vote.OpenPanel(id, question, options, duration, suppressQueue)
         end
     end
 
+    function p:OnRemove()
+        if VotePanels[self.Id] == self then
+            VotePanels[self.Id] = nil
+        end
+    end
+
     if #segments == 0 and question ~= "" then
         table.insert(segments, { text = question, col = baseCol })
     end
