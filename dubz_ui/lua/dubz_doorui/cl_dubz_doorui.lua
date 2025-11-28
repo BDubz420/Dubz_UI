@@ -398,8 +398,8 @@ local function DrawDoorHUD()
     local lockColor = locked and Color(255,100,100) or Color(120,255,120)
     local lockText  = locked and "Locked" or "Unlocked"
 
-    DrawLockIcon(x - 45, y + 13, 18, locked)
-    draw.SimpleText(lockText, "DubzDoor_Lock", x, y + 12, lockColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    --DrawLockIcon(x - 45, y + 13, 18, locked)
+    --draw.SimpleText(lockText, "DubzDoor_Lock", x, y + 12, lockColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 end
 
 hook.Add("HUDPaint", "Dubz_DoorUI_DrawHUD", DrawDoorHUD)

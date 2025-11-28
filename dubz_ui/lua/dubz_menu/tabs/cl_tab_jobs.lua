@@ -80,6 +80,21 @@ Dubz.RegisterTab("jobs", "Jobs", "jobs", function(parent)
         -- 🎫 Job Cards
         ----------------------------------------------------------------------
         for _, job in ipairs(cat.members or {}) do
+
+            ------------------------------------------------------------------
+            -- ✅ Respect DarkRP customCheck (hide job if not permitted)
+            ------------------------------------------------------------------
+            if job.customCheck and not job.customCheck(LocalPlayer()) then
+                -- job is hidden from F4 for this player, so skip it
+                continue
+            end
+
+            ------------------------------------------------------------------
+            -- ✅ Respect admin jobs (admin=1=admin only, admin=2=superadmin only)
+            ------------------------------------------------------------------
+            if job.admin == 1 and not LocalPlayer():IsAdmin() then continue end
+            if job.admin == 2 and not LocalPlayer():IsSuperAdmin() then continue end
+
             local jobColor = job.color or catColor
             local card = grid:Add("DPanel")
             card:SetSize(300, 100)

@@ -74,19 +74,34 @@ local function SanitizeGang(gid, gang)
     gang.bank  = math.max(0, tonumber(gang.bank) or 0)
     gang.color = gang.color or { r = 255, g = 255, b = 255 }
 
+    -- Validate members and count how many are valid
     gang.members = gang.members or {}
+    local fixedMembers = {}
+    local memberCount = 0
+
     for sid64, member in pairs(gang.members) do
-        if type(sid64) ~= "string" or not istable(member) then
-            gang.members[sid64] = nil
-        else
+        local key = tostring(sid64)
+
+        if istable(member) then
             member.name   = tostring(member.name or "Member")
             member.rank   = math.Clamp(tonumber(member.rank) or Dubz.GangRanks.Member, 1, Dubz.GangRanks.Leader)
             member.joined = tonumber(member.joined) or os.time()
+
+            fixedMembers[key] = member
+            memberCount = memberCount + 1
         end
+    end
+
+    gang.members = fixedMembers
+
+    -- No members at all? This gang should not exist.
+    if memberCount == 0 then
+        return nil
     end
 
     gang.rankTitles = gang.rankTitles or table.Copy(Dubz.DefaultRankTitles)
 
+    -- Territories are runtime-only; normalize them for live use, but they won't be persisted.
     local terrs = {}
     if istable(gang.territories) then
         for key, terr in pairs(gang.territories) do
@@ -97,6 +112,12 @@ local function SanitizeGang(gid, gang)
         end
     end
     gang.territories = terrs
+
+    -- Wars are also runtime-only; ensure a basic structure exists.
+    gang.wars = gang.wars or {
+        active = false,
+        enemy  = nil
+    }
 
     NormalizeGraffiti(gang)
 
@@ -121,8 +142,16 @@ local function BuildSaveBlob()
     local blob = { version = 1, gangs = {} }
 
     for gid, gang in pairs(Dubz.Gangs or {}) do
-        blob.gangs[gid] = table.Copy(gang)
-        SanitizeGang(gid, blob.gangs[gid])
+        local copy = table.Copy(gang)
+
+        -- Sanitize a copy before saving. If it comes back nil, the gang is invalid.
+        if SanitizeGang(gid, copy) then
+            -- NEVER persist runtime-only fields
+            copy.territories = nil  -- claimed territories / graffiti spots reset on restart
+            copy.wars        = nil  -- war state is always reset on restart
+
+            blob.gangs[gid] = copy
+        end
     end
 
     return blob
@@ -199,31 +228,50 @@ local function RefreshGangNWForAll()
     end
 end
 
-local function SaveGangs()
+-- Make SaveGangs global + logging + cleanup
+function SaveGangs()
+    print("[Dubz Gangs] SaveGangs() called — building save blob...")
+
     if not istable(Dubz.Gangs) then
         Dubz.Gangs = {}
     end
 
+    -- Remove invalid / empty gangs at save time too
+    for gid, g in pairs(Dubz.Gangs) do
+        if not SanitizeGang(gid, g) then
+            print("[Dubz Gangs] Removing gang with no members: " .. tostring(gid))
+            Dubz.Gangs[gid] = nil
+        end
+    end
+
     if not file.IsDir(DATA_DIR, "DATA") then
+        print("[Dubz Gangs] Data directory missing — creating " .. DATA_DIR)
         file.CreateDir(DATA_DIR)
     end
 
     local ok, blob = pcall(BuildSaveBlob)
     if not ok then
-        print("[Dubz Gangs] Failed to build gangs save blob:", blob)
+        print("[Dubz Gangs] ERROR: Failed to build gangs save blob:", blob)
         return
     end
 
+    print("[Dubz Gangs] Blob built successfully, encoding JSON...")
+
     local encoded = util.TableToJSON(blob, true)
     if not encoded then
-        print("[Dubz Gangs] Failed to encode gangs for saving!")
+        print("[Dubz Gangs] ERROR: Failed to encode gangs for saving!")
         return
     end
 
     file.Write(DATA_FILE, encoded)
 
+    local gangCount = table.Count(Dubz.Gangs or {})
+    print("[Dubz Gangs] Successfully saved " .. gangCount .. " gangs to " .. DATA_FILE)
+
     RebuildGangByMember()
     RefreshGangNWForAll()
+
+    print("[Dubz Gangs] SaveGangs() complete.")
 end
 
 local function ExtractGangTable(tbl)
@@ -232,37 +280,65 @@ local function ExtractGangTable(tbl)
     return tbl
 end
 
--- FIXED LoadGangs (ensures graffiti exists BEFORE any sync happens)
+-- Load gangs from disk, sanitize them, and rebuild member lookup.
 local function LoadGangs()
+    print("[Dubz Gangs] LoadGangs() called — starting load process...")
+
     if file.Exists(DATA_FILE, "DATA") then
+        print("[Dubz Gangs] Found gangs file: " .. DATA_FILE)
         local raw = file.Read(DATA_FILE, "DATA") or "{}"
+
+        print("[Dubz Gangs] Decoding JSON...")
         local ok, decoded = pcall(util.JSONToTable, raw)
         if ok and istable(decoded) then
             Dubz.Gangs = ExtractGangTable(decoded)
         else
-            print("[Dubz Gangs] Failed to parse gangs file, starting fresh.")
+            print("[Dubz Gangs] ERROR: Failed to parse gangs file! Resetting gangs.")
             Dubz.Gangs = {}
         end
     else
+        print("[Dubz Gangs] No gangs file found. Starting with empty gang list.")
         Dubz.Gangs = {}
     end
 
+    print("[Dubz Gangs] Sanitizing loaded gangs...")
+
+    local removed = 0
+    local total = 0
+
     for gid, g in pairs(Dubz.Gangs) do
+        total = total + 1
         if not SanitizeGang(gid, g) then
+            print("[Dubz Gangs] WARNING: Gang '" .. tostring(gid) .. "' failed sanitization and was removed.")
             Dubz.Gangs[gid] = nil
+            removed = removed + 1
+        else
+            print("[Dubz Gangs] Sanitized gang: " .. tostring(gid))
         end
     end
 
+    print(string.format(
+        "[Dubz Gangs] Load complete — %d total, %d removed, %d final.",
+        total, removed, table.Count(Dubz.Gangs)
+    ))
+
     RebuildGangByMember()
     RefreshGangNWForAll()
+
+    print("[Dubz Gangs] LoadGangs() finalized.")
 end
-hook.Add("Initialize","Dubz_Gangs_Load_Fixed", function()
-    timer.Simple(1, function()
+
+hook.Add("InitPostEntity", "Dubz_Gangs_Load_Fixed", function()
+    timer.Simple(0.5, function()
         LoadGangs()
-        print("[Dubz Gangs] Loaded", table.Count(Dubz.Gangs or {}), "gangs.")
+        print("[Dubz Gangs] Loaded", table.Count(Dubz.Gangs or {}), "gangs after InitPostEntity.")
     end)
 end)
 
+hook.Add("ShutDown", "Dubz_Gangs_Save_On_Shutdown", function()
+    print("[Dubz Gangs] Server shutting down — saving gang data.")
+    SaveGangs()
+end)
 
 -- Sync helpers
 local function SendFullSync(ply)
@@ -385,9 +461,61 @@ local function RebuildRichestGangs()
     end
 end
 
-hook.Add("PlayerInitialSpawn","Dubz_Gangs_InitSync", function(ply)
-    timer.Simple(2, function()
-        if IsValid(ply) then SendFullSync(ply) end
+local function FullResync(ply)
+    if not IsValid(ply) then return end
+
+    -- Send full gangs table
+    SendFullSync(ply)
+
+    -- And send their personal gang status again to ensure client cache is correct
+    local sid = ply:SteamID64()
+    local gid = Dubz.GangByMember[sid]
+    local rank = 0
+
+    if gid and Dubz.Gangs[gid] and Dubz.Gangs[gid].members and Dubz.Gangs[gid].members[sid] then
+        rank = Dubz.Gangs[gid].members[sid].rank or 1
+    end
+
+    net.Start("Dubz_Gang_MyStatus")
+        net.WriteString(gid or "")
+        net.WriteUInt(rank, 3)
+    net.Send(ply)
+end
+
+hook.Add("PlayerInitialSpawn", "Dubz_Gangs_ExtraSync", function(ply)
+    timer.Simple(3, function()
+        if not IsValid(ply) then return end
+        FullResync(ply)
+    end)
+end)
+
+hook.Add("PlayerSpawn", "Dubz_Gangs_FinalSpawnSync", function(ply)
+    timer.Simple(0.3, function()
+        if not IsValid(ply) then return end
+        FullResync(ply)
+    end)
+end)
+
+hook.Add("PlayerLoadout", "Dubz_Gangs_LoadoutSync", function(ply)
+    timer.Simple(0.2, function()
+        if not IsValid(ply) then return end
+        FullResync(ply)
+    end)
+end)
+
+hook.Add("PlayerFullyLoaded", "Dubz_Gangs_PlayerFullyLoadedSync", function(ply)
+    timer.Simple(0.2, function()
+        if IsValid(ply) then
+            FullResync(ply)
+        end
+    end)
+end)
+
+hook.Add("playerFullyLoaded", "Dubz_Gangs_playerFullyLoadedSync_DarkRP", function(ply)
+    timer.Simple(0.2, function()
+        if IsValid(ply) then
+            FullResync(ply)
+        end
     end)
 end)
 
@@ -437,6 +565,56 @@ local function CanWithdrawFromBank(ply, gid)
     local m = g.members[sid]
     local r = m and (m.rank or 1) or 0
     return r >= minRank
+end
+
+local function PromoteNewLeader(gid)
+    local g = Dubz.Gangs[gid]
+    if not g or not g.members then return end
+
+    local candidatesByRank = {}
+    local highestRank = 0
+
+    for sid, m in pairs(g.members) do
+        local r = m.rank or Dubz.GangRanks.Member
+        if r > highestRank then
+            highestRank = r
+            candidatesByRank = { sid }
+        elseif r == highestRank then
+            table.insert(candidatesByRank, sid)
+        end
+    end
+
+    if #candidatesByRank == 0 then
+        return
+    end
+
+    local newLeaderSid
+
+    if highestRank <= Dubz.GangRanks.Member then
+        -- Everyone is just a Member -> pick randomly
+        newLeaderSid = candidatesByRank[math.random(#candidatesByRank)]
+    else
+        -- Higher ranks exist: pick the oldest join date among the highest rank
+        local bestSid = candidatesByRank[1]
+        local bestJoined = g.members[bestSid].joined or os.time()
+
+        for _, sid in ipairs(candidatesByRank) do
+            local joined = g.members[sid].joined or os.time()
+            if joined < bestJoined then
+                bestSid = sid
+                bestJoined = joined
+            end
+        end
+
+        newLeaderSid = bestSid
+    end
+
+    if not newLeaderSid then return end
+
+    g.leaderSid64 = newLeaderSid
+    g.members[newLeaderSid].rank = Dubz.GangRanks.Leader
+
+    print(string.format("[Dubz Gangs] New leader for %s is %s", tostring(gid), tostring(newLeaderSid)))
 end
 
 -- MONEY helpers
@@ -515,7 +693,7 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
                 }
             },
 
-            -- No active war initially
+            -- No active war initially (runtime-only)
             wars = {
                 active = false,
                 enemy  = nil
@@ -543,24 +721,50 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
     -- LEAVE
     if act.cmd == "leave" and gid then
         local g = Dubz.Gangs[gid]; if not g then return end
-        if g.leaderSid64 == sid then
-            -- leader leaving: if alone -> disband; else deny
-            local count = 0; for _ in pairs(g.members or {}) do count = count + 1 end
-            if count <= 1 then
-                Dubz.Gangs[gid] = nil
-                for m,_ in pairs(Dubz.GangByMember) do if Dubz.GangByMember[m] == gid then Dubz.GangByMember[m] = nil end end
-                SaveGangs(); RebuildRichestGangs()
-                net.Start("Dubz_Gang_Update") net.WriteString(gid) net.WriteTable({}) net.Broadcast()
-            else
-                -- deny; leader must /disband or /promote someone first
-                return
-            end
-        else
+
+        -- Remove this player from the gang first
+        if g.members then
             g.members[sid] = nil
-            Dubz.GangByMember[sid] = nil
-            SaveGangs(); RebuildRichestGangs()
-            BroadcastUpdate(gid); SendFullSync(ply)
         end
+        Dubz.GangByMember[sid] = nil
+
+        -- Count remaining members
+        local remaining = 0
+        for _ in pairs(g.members or {}) do
+            remaining = remaining + 1
+        end
+
+        if remaining == 0 then
+            -- No one left in the gang -> delete it
+            Dubz.Gangs[gid] = nil
+            for m, _ in pairs(Dubz.GangByMember) do
+                if Dubz.GangByMember[m] == gid then
+                    Dubz.GangByMember[m] = nil
+                end
+            end
+
+            SaveGangs()
+            RebuildRichestGangs()
+
+            net.Start("Dubz_Gang_Update")
+                net.WriteString(gid)
+                net.WriteTable({})
+            net.Broadcast()
+
+            print("[Dubz Gangs] Gang " .. tostring(gid) .. " removed (last member left).")
+            return
+        end
+
+        -- If the leaving player was the leader, promote a new one
+        if g.leaderSid64 == sid then
+            PromoteNewLeader(gid)
+        end
+
+        SaveGangs()
+        RebuildRichestGangs()
+        BroadcastUpdate(gid)
+        SendFullSync(ply)
+
         return
     end
 
@@ -591,7 +795,7 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         return
     end
 
-    -- INVITE (leader only as requested)
+    -- INVITE (leader only as requested / or officer if config says so)
     if act.cmd == "invite" and gid and CanInvite(ply, gid) then
         local target = act.target and player.GetBySteamID64(tostring(act.target)) or nil
         if not IsValid(target) then return end
@@ -801,7 +1005,7 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         return
     end
 
-    -- WARS
+    -- WARS (non-persistent basic system)
     if CFG.Wars and CFG.Wars.Enabled then
         if act.cmd == "declare_war" and gid and IsLeader(ply, gid) then
             local enemy = tostring(act.enemy or "")
