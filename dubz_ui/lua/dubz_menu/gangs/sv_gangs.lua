@@ -834,6 +834,178 @@ local function EvaluateWarVote(voteId)
     return false
 end
 
+-- WAR VOTES
+local function BroadcastWarVotePrompt(voteId, challenger, target, duration)
+    local function sendToGang(gid)
+        for _, ply in ipairs(player.GetAll()) do
+            if not IsValid(ply) then continue end
+            if Dubz.GangByMember[ply:SteamID64()] ~= gid then continue end
+
+            net.Start("Dubz_GangWar_VotePrompt")
+                net.WriteString(voteId)
+                net.WriteString(challenger)
+                net.WriteString(target)
+                net.WriteFloat(duration)
+            net.Send(ply)
+        end
+    end
+
+    sendToGang(challenger)
+    sendToGang(target)
+end
+
+local function EvaluateWarVote(voteId)
+    local vote = ActiveWarVotes[voteId]
+    if not vote then return end
+
+    local challenger = vote.challenger
+    local target = vote.target
+
+    local function passed(gid)
+        local data = vote.votes[gid] or { yes = 0, no = 0 }
+        return data.yes > data.no and data.yes > 0
+    end
+
+    local challengerOk = passed(challenger)
+    local targetOk = passed(target)
+
+    if challengerOk and targetOk then
+        ActiveWarVotes[voteId] = nil
+
+        local duration = CFG.Wars and CFG.Wars.Duration or 1800
+        local countdown = 5
+
+        local function beginWar()
+            local g = Dubz.Gangs[challenger]
+            local e = Dubz.Gangs[target]
+            if not g or not e then return end
+
+            g.wars = g.wars or {}
+            e.wars = e.wars or {}
+
+            g.wars.active = true
+            g.wars.enemy = target
+            g.wars.started = CurTime() + countdown
+            g.wars.ends = g.wars.started + duration
+
+            e.wars.active = true
+            e.wars.enemy = challenger
+            e.wars.started = g.wars.started
+            e.wars.ends = g.wars.ends
+
+            SaveGangs()
+            BroadcastUpdate(challenger)
+            BroadcastUpdate(target)
+
+            timer.Simple(countdown, function()
+                if not Dubz.Gangs[challenger] or not Dubz.Gangs[target] then return end
+                net.Start("Dubz_GangWar_Start")
+                    net.WriteString(challenger)
+                    net.WriteString(target)
+                    net.WriteFloat(g.wars.ends)
+                net.Broadcast()
+            end)
+        end
+
+        net.Start("Dubz_GangWar_Countdown")
+            net.WriteString(challenger)
+            net.WriteString(target)
+            net.WriteFloat(countdown)
+        net.Broadcast()
+
+        beginWar()
+        return true
+    end
+
+    return false
+end
+
+-- WAR VOTES
+local function BroadcastWarVotePrompt(voteId, challenger, target, duration)
+    local function sendToGang(gid)
+        for _, ply in ipairs(player.GetAll()) do
+            if not IsValid(ply) then continue end
+            if Dubz.GangByMember[ply:SteamID64()] ~= gid then continue end
+
+            net.Start("Dubz_GangWar_VotePrompt")
+                net.WriteString(voteId)
+                net.WriteString(challenger)
+                net.WriteString(target)
+                net.WriteFloat(duration)
+            net.Send(ply)
+        end
+    end
+
+    sendToGang(challenger)
+    sendToGang(target)
+end
+
+local function EvaluateWarVote(voteId)
+    local vote = ActiveWarVotes[voteId]
+    if not vote then return end
+
+    local challenger = vote.challenger
+    local target = vote.target
+
+    local function passed(gid)
+        local data = vote.votes[gid] or { yes = 0, no = 0 }
+        return data.yes > data.no and data.yes > 0
+    end
+
+    local challengerOk = passed(challenger)
+    local targetOk = passed(target)
+
+    if challengerOk and targetOk then
+        ActiveWarVotes[voteId] = nil
+
+        local duration = CFG.Wars and CFG.Wars.Duration or 1800
+        local countdown = 5
+
+        local function beginWar()
+            local g = Dubz.Gangs[challenger]
+            local e = Dubz.Gangs[target]
+            if not g or not e then return end
+
+            g.wars = g.wars or {}
+            e.wars = e.wars or {}
+
+            g.wars.active = true
+            g.wars.enemy = target
+            g.wars.started = CurTime() + countdown
+            g.wars.ends = g.wars.started + duration
+
+            e.wars.active = true
+            e.wars.enemy = challenger
+            e.wars.started = g.wars.started
+            e.wars.ends = g.wars.ends
+
+            SaveGangs()
+            BroadcastUpdate(challenger)
+            BroadcastUpdate(target)
+
+            timer.Simple(countdown, function()
+                if not Dubz.Gangs[challenger] or not Dubz.Gangs[target] then return end
+                net.Start("Dubz_GangWar_Start")
+                    net.WriteString(challenger)
+                    net.WriteString(target)
+                    net.WriteFloat(g.wars.ends)
+                net.Broadcast()
+            end)
+        end
+
+        net.Start("Dubz_GangWar_Countdown")
+            net.WriteString(challenger)
+            net.WriteString(target)
+            net.WriteFloat(countdown)
+        net.Broadcast()
+
+        beginWar()
+        return true
+    end
+
+    return false
+end
+
 local function SendInvite(target, fromPly, gid)
     local sidT = target:SteamID64()
     PendingInvites[sidT] = {

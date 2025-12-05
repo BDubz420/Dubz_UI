@@ -329,6 +329,222 @@ net.Receive("Dubz_GangWar_Countdown", function()
 end)
 
 --------------------------------------------------------
+-- WAR VOTE PROMPT
+--------------------------------------------------------
+net.Receive("Dubz_GangWar_VotePrompt", function()
+    local voteId   = net.ReadString()
+    local g1       = net.ReadString()
+    local g2       = net.ReadString()
+    local duration = net.ReadFloat()
+
+    if Dubz.MyGangId ~= g1 and Dubz.MyGangId ~= g2 then return end
+
+    if IsValid(Dubz.WarVoteFrame) then Dubz.WarVoteFrame:Remove() end
+
+    local enemy = (Dubz.MyGangId == g1) and g2 or g1
+
+    local fr = vgui.Create("DFrame")
+    fr:SetTitle("Gang War Vote")
+    fr:SetSize(340, 180)
+    fr:Center()
+    fr:MakePopup()
+    Dubz.WarVoteFrame = fr
+
+    local lbl = vgui.Create("DLabel", fr)
+    lbl:SetText(string.format("Vote to start a war with %s", enemy))
+    lbl:SetFont("DubzHUD_Body")
+    lbl:SizeToContents()
+    lbl:SetPos(20, 40)
+
+    local info = vgui.Create("DLabel", fr)
+    info:SetFont("DubzHUD_Tag")
+    info:SetText("Capture enemy territories and defend your own.")
+    info:SizeToContents()
+    info:SetPos(20, 64)
+
+    local yes = vgui.Create("DButton", fr)
+    yes:SetSize(140, 34)
+    yes:SetPos(20, 120)
+    yes:SetText("Yes, go to war")
+    yes.DoClick = function()
+        Dubz.SendGangAction({ cmd = "vote_war", choice = true, voteId = voteId })
+        fr:Close()
+    end
+
+    local no = vgui.Create("DButton", fr)
+    no:SetSize(140, 34)
+    no:SetPos(180, 120)
+    no:SetText("No")
+    no.DoClick = function()
+        Dubz.SendGangAction({ cmd = "vote_war", choice = false, voteId = voteId })
+        fr:Close()
+    end
+
+    timer.Simple(duration, function()
+        if IsValid(fr) then fr:Close() end
+    end)
+end)
+
+--------------------------------------------------------
+-- WAR COUNTDOWN / BRIEFING
+--------------------------------------------------------
+net.Receive("Dubz_GangWar_Countdown", function()
+    local g1    = net.ReadString()
+    local g2    = net.ReadString()
+    local secs  = net.ReadFloat()
+
+    if Dubz.MyGangId ~= g1 and Dubz.MyGangId ~= g2 then return end
+
+    WarCountdown_Active = true
+    WarCountdown_End    = CurTime() + secs
+    WarCountdown_Enemy  = (Dubz.MyGangId == g1) and g2 or g1
+end)
+
+--------------------------------------------------------
+-- WAR VOTE PROMPT
+--------------------------------------------------------
+net.Receive("Dubz_GangWar_VotePrompt", function()
+    local voteId   = net.ReadString()
+    local g1       = net.ReadString()
+    local g2       = net.ReadString()
+    local duration = net.ReadFloat()
+
+    if Dubz.MyGangId ~= g1 and Dubz.MyGangId ~= g2 then return end
+
+    if IsValid(Dubz.WarVoteFrame) then Dubz.WarVoteFrame:Remove() end
+
+    local enemy = (Dubz.MyGangId == g1) and g2 or g1
+
+    local fr = vgui.Create("DFrame")
+    fr:SetTitle("Gang War Vote")
+    fr:SetSize(340, 180)
+    fr:Center()
+    fr:MakePopup()
+    Dubz.WarVoteFrame = fr
+
+    local lbl = vgui.Create("DLabel", fr)
+    lbl:SetText(string.format("Vote to start a war with %s", enemy))
+    lbl:SetFont("DubzHUD_Body")
+    lbl:SizeToContents()
+    lbl:SetPos(20, 40)
+
+    local info = vgui.Create("DLabel", fr)
+    info:SetFont("DubzHUD_Tag")
+    info:SetText("Capture enemy territories and defend your own.")
+    info:SizeToContents()
+    info:SetPos(20, 64)
+
+    local yes = vgui.Create("DButton", fr)
+    yes:SetSize(140, 34)
+    yes:SetPos(20, 120)
+    yes:SetText("Yes, go to war")
+    yes.DoClick = function()
+        Dubz.SendGangAction({ cmd = "vote_war", choice = true, voteId = voteId })
+        fr:Close()
+    end
+
+    local no = vgui.Create("DButton", fr)
+    no:SetSize(140, 34)
+    no:SetPos(180, 120)
+    no:SetText("No")
+    no.DoClick = function()
+        Dubz.SendGangAction({ cmd = "vote_war", choice = false, voteId = voteId })
+        fr:Close()
+    end
+
+    timer.Simple(duration, function()
+        if IsValid(fr) then fr:Close() end
+    end)
+end)
+
+--------------------------------------------------------
+-- WAR COUNTDOWN / BRIEFING
+--------------------------------------------------------
+net.Receive("Dubz_GangWar_Countdown", function()
+    local g1    = net.ReadString()
+    local g2    = net.ReadString()
+    local secs  = net.ReadFloat()
+
+    if Dubz.MyGangId ~= g1 and Dubz.MyGangId ~= g2 then return end
+
+    WarCountdown_Active = true
+    WarCountdown_End    = CurTime() + secs
+    WarCountdown_Enemy  = (Dubz.MyGangId == g1) and g2 or g1
+end)
+
+--------------------------------------------------------
+-- WAR VOTE PROMPT
+--------------------------------------------------------
+net.Receive("Dubz_GangWar_VotePrompt", function()
+    local voteId   = net.ReadString()
+    local g1       = net.ReadString()
+    local g2       = net.ReadString()
+    local duration = net.ReadFloat()
+
+    if Dubz.MyGangId ~= g1 and Dubz.MyGangId ~= g2 then return end
+
+    if IsValid(Dubz.WarVoteFrame) then Dubz.WarVoteFrame:Remove() end
+
+    local enemy = (Dubz.MyGangId == g1) and g2 or g1
+
+    local fr = vgui.Create("DFrame")
+    fr:SetTitle("Gang War Vote")
+    fr:SetSize(340, 180)
+    fr:Center()
+    fr:MakePopup()
+    Dubz.WarVoteFrame = fr
+
+    local lbl = vgui.Create("DLabel", fr)
+    lbl:SetText(string.format("Vote to start a war with %s", enemy))
+    lbl:SetFont("DubzHUD_Body")
+    lbl:SizeToContents()
+    lbl:SetPos(20, 40)
+
+    local info = vgui.Create("DLabel", fr)
+    info:SetFont("DubzHUD_Tag")
+    info:SetText("Capture enemy territories and defend your own.")
+    info:SizeToContents()
+    info:SetPos(20, 64)
+
+    local yes = vgui.Create("DButton", fr)
+    yes:SetSize(140, 34)
+    yes:SetPos(20, 120)
+    yes:SetText("Yes, go to war")
+    yes.DoClick = function()
+        Dubz.SendGangAction({ cmd = "vote_war", choice = true, voteId = voteId })
+        fr:Close()
+    end
+
+    local no = vgui.Create("DButton", fr)
+    no:SetSize(140, 34)
+    no:SetPos(180, 120)
+    no:SetText("No")
+    no.DoClick = function()
+        Dubz.SendGangAction({ cmd = "vote_war", choice = false, voteId = voteId })
+        fr:Close()
+    end
+
+    timer.Simple(duration, function()
+        if IsValid(fr) then fr:Close() end
+    end)
+end)
+
+--------------------------------------------------------
+-- WAR COUNTDOWN / BRIEFING
+--------------------------------------------------------
+net.Receive("Dubz_GangWar_Countdown", function()
+    local g1    = net.ReadString()
+    local g2    = net.ReadString()
+    local secs  = net.ReadFloat()
+
+    if Dubz.MyGangId ~= g1 and Dubz.MyGangId ~= g2 then return end
+
+    WarCountdown_Active = true
+    WarCountdown_End    = CurTime() + secs
+    WarCountdown_Enemy  = (Dubz.MyGangId == g1) and g2 or g1
+end)
+
+--------------------------------------------------------
 -- MAIN WAR HUD DRAW
 --------------------------------------------------------
 hook.Add("HUDPaint", "Dubz_GangWar_HUD", function()
@@ -392,6 +608,81 @@ hook.Add("HUDPaint", "Dubz_GangWar_HUD", function()
         Color(230,230,230),
         TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER
     )
+end)
+
+--------------------------------------------------------
+-- WAR COUNTDOWN HUD
+--------------------------------------------------------
+hook.Add("HUDPaint", "Dubz_GangWar_CountdownHUD", function()
+    if not WarCountdown_Active then return end
+    if not Dubz.MyGangId or Dubz.MyGangId == "" then return end
+
+    local remain = math.max(0, WarCountdown_End - CurTime())
+    if remain <= 0 then
+        WarCountdown_Active = false
+        return
+    end
+
+    local w, h = 480, 160
+    local x = ScrW() / 2 - w / 2
+    local y = ScrH() / 2 - h / 2
+
+    draw.RoundedBox(12, x, y, w, h, Color(8, 8, 8, 220))
+    draw.SimpleText("Gang War Incoming!", "DubzHUD_Title", x + w / 2, y + 24, Color(255,80,80), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    draw.SimpleText(string.format("Battle %s in %ds", WarCountdown_Enemy, math.ceil(remain)), "DubzHUD_Header", x + w / 2, y + 60, Color(255,255,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+
+    draw.SimpleText("Do: Capture enemy territories, defend your poles, back up your crew.", "DubzHUD_Tag", x + w / 2, y + 96, Color(220,220,220), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    draw.SimpleText("Don't: Teamkill allies or abandon objectives.", "DubzHUD_Tag", x + w / 2, y + 118, Color(200,200,200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+end)
+
+--------------------------------------------------------
+-- WAR COUNTDOWN HUD
+--------------------------------------------------------
+hook.Add("HUDPaint", "Dubz_GangWar_CountdownHUD", function()
+    if not WarCountdown_Active then return end
+    if not Dubz.MyGangId or Dubz.MyGangId == "" then return end
+
+    local remain = math.max(0, WarCountdown_End - CurTime())
+    if remain <= 0 then
+        WarCountdown_Active = false
+        return
+    end
+
+    local w, h = 480, 160
+    local x = ScrW() / 2 - w / 2
+    local y = ScrH() / 2 - h / 2
+
+    draw.RoundedBox(12, x, y, w, h, Color(8, 8, 8, 220))
+    draw.SimpleText("Gang War Incoming!", "DubzHUD_Title", x + w / 2, y + 24, Color(255,80,80), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    draw.SimpleText(string.format("Battle %s in %ds", WarCountdown_Enemy, math.ceil(remain)), "DubzHUD_Header", x + w / 2, y + 60, Color(255,255,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+
+    draw.SimpleText("Do: Capture enemy territories, defend your poles, back up your crew.", "DubzHUD_Tag", x + w / 2, y + 96, Color(220,220,220), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    draw.SimpleText("Don't: Teamkill allies or abandon objectives.", "DubzHUD_Tag", x + w / 2, y + 118, Color(200,200,200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+end)
+
+--------------------------------------------------------
+-- WAR COUNTDOWN HUD
+--------------------------------------------------------
+hook.Add("HUDPaint", "Dubz_GangWar_CountdownHUD", function()
+    if not WarCountdown_Active then return end
+    if not Dubz.MyGangId or Dubz.MyGangId == "" then return end
+
+    local remain = math.max(0, WarCountdown_End - CurTime())
+    if remain <= 0 then
+        WarCountdown_Active = false
+        return
+    end
+
+    local w, h = 480, 160
+    local x = ScrW() / 2 - w / 2
+    local y = ScrH() / 2 - h / 2
+
+    draw.RoundedBox(12, x, y, w, h, Color(8, 8, 8, 220))
+    draw.SimpleText("Gang War Incoming!", "DubzHUD_Title", x + w / 2, y + 24, Color(255,80,80), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    draw.SimpleText(string.format("Battle %s in %ds", WarCountdown_Enemy, math.ceil(remain)), "DubzHUD_Header", x + w / 2, y + 60, Color(255,255,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+
+    draw.SimpleText("Do: Capture enemy territories, defend your poles, back up your crew.", "DubzHUD_Tag", x + w / 2, y + 96, Color(220,220,220), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    draw.SimpleText("Don't: Teamkill allies or abandon objectives.", "DubzHUD_Tag", x + w / 2, y + 118, Color(200,200,200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 end)
 
 --------------------------------------------------------
