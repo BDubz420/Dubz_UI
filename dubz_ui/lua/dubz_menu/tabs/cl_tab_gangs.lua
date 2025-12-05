@@ -315,11 +315,33 @@ end
 --------------------------------------------------------
 -- GRAFFITI FONTS
 --------------------------------------------------------
-function EnsureGraffitiFont(gang)
+local function EnsureGraffitiFont(gang)
     if not gang or not gang.graffiti then return "DubzHUD_Header" end
 
     local fontID = gang.graffiti.font or "DubzHUD_Header"
-    local base = "DubzGraff_" .. fontID .. "_Base"
+
+    local function ensureBase(id)
+        for _, f in ipairs(Dubz.Config.GraffitiFonts or {}) do
+            if f.id == id then
+                _G.DubzGraffitiBaseFonts = _G.DubzGraffitiBaseFonts or {}
+                local baseName = "DubzGraff_" .. f.id .. "_Base"
+                if not _G.DubzGraffitiBaseFonts[baseName] then
+                    surface.CreateFont(baseName, {
+                        font      = f.file,
+                        size      = 48,
+                        weight    = 900,
+                        antialias = true,
+                        extended  = true
+                    })
+                    _G.DubzGraffitiBaseFonts[baseName] = true
+                end
+                return baseName
+            end
+        end
+        return "DubzHUD_Header"
+    end
+
+    local base = ensureBase(fontID)
 
     local scale = math.max(0.5, gang.graffiti.scale or 1)
     local fontName = base .. "_S" .. tostring(scale)

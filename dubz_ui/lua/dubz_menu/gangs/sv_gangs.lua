@@ -18,9 +18,6 @@ local function IsValidGraffitiFont(id)
 end
 
 -- forward declares so helpers are available everywhere
-local AddMoney
-local TakeMoney
-
 local DATA_DIR = "dubz_ui"
 local DATA_FILE = DATA_DIR .. "/gangs.json"
 
