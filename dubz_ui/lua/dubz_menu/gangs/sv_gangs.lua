@@ -1137,13 +1137,6 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         end
 
         --------------------------------------------------
-        -- BACKGROUND MATERIAL
-        --------------------------------------------------
-        if act.bgMat then
-            g.graffiti.bgMat = tostring(act.bgMat)
-        end
-
-        --------------------------------------------------
         -- CUSTOM COLOR
         --------------------------------------------------
         if istable(act.color) then
