@@ -4,8 +4,22 @@ include("dubz_menu/gangs/sh_gangs.lua")
 util.AddNetworkString("Dubz_GangWar_Start")
 util.AddNetworkString("Dubz_GangWar_Update")
 util.AddNetworkString("Dubz_GangWar_End")
+util.AddNetworkString("Dubz_GangWar_VotePrompt")
+util.AddNetworkString("Dubz_GangWar_Countdown")
 
 local CFG = Dubz.Config and Dubz.Config.Gangs or {}
+local ActiveWarVotes = {}
+
+local function IsValidGraffitiFont(id)
+    for _, f in ipairs(Dubz.Config.GraffitiFonts or {}) do
+        if f.id == id then return true end
+    end
+    return false
+end
+
+-- forward declares so helpers are available everywhere
+local AddMoney
+local TakeMoney
 
 local DATA_DIR = "dubz_ui"
 local DATA_FILE = DATA_DIR .. "/gangs.json"
@@ -60,13 +74,18 @@ local function NormalizeGraffiti(g)
     local name = g.name or "Gang"
 
     g.graffiti.text   = g.graffiti.text   or name
-    g.graffiti.font   = g.graffiti.font   or "Trebuchet24"
+    g.graffiti.font   = g.graffiti.font   or (Dubz.Config.GraffitiFonts[1] and Dubz.Config.GraffitiFonts[1].id) or "Trebuchet24"
+
+    if not IsValidGraffitiFont(g.graffiti.font) then
+        g.graffiti.font = (Dubz.Config.GraffitiFonts[1] and Dubz.Config.GraffitiFonts[1].id) or "Trebuchet24"
+    end
     g.graffiti.scale  = tonumber(g.graffiti.scale) or 1
     g.graffiti.effect = g.graffiti.effect or "Clean"
 
+    local fontScaleKey = tostring(g.graffiti.scale or 1)
     g.graffiti.fontScaled =
         g.graffiti.fontScaled or
-        ("DubzGraffiti_Font_" .. math.floor((g.graffiti.scale or 1) * 100))
+        ("DubzGraff_" .. g.graffiti.font .. "_Base_S" .. fontScaleKey)
 
     local base = g.graffiti.color or g.color or { r=255, g=255, b=255 }
     g.graffiti.color = {
@@ -393,6 +412,10 @@ hook.Add("Dubz_Gang_TerritoryPayout", "Dubz_Gang_TerritoryPayout_Handler", funct
     local gang = Dubz.Gangs[gangId]
     onlineMembers = onlineMembers or {}
 
+    local territoryName = (IsValid(ent) and ent.GetTerritoryName and ent:GetTerritoryName() ~= "")
+        and ent:GetTerritoryName()
+        or "territory"
+
     local bankFrac    = incomeCfg.GangBankShare or 0.8
     local memberFrac  = incomeCfg.MemberShare or 0.2
 
@@ -419,11 +442,7 @@ hook.Add("Dubz_Gang_TerritoryPayout", "Dubz_Gang_TerritoryPayout_Handler", funct
         if leaderSid and leaderSid ~= "" then
             for _, ply in ipairs(player.GetAll()) do
                 if IsValid(ply) and ply:SteamID64() == leaderSid then
-                    if DarkRP and DarkRP.notify then
-                        DarkRP.notify(ply, 0, 6, string.format("Territory income added $%d to the gang bank.", bankAmount))
-                    else
-                        ply:ChatPrint(string.format("[Gang] Territory income added $%d to the gang bank.", bankAmount))
-                    end
+                    GangNotify(ply, 0, 6, string.format("Territory income added $%d to the gang bank from %s.", bankAmount, territoryName))
                 end
             end
         end
@@ -438,7 +457,36 @@ hook.Add("Dubz_Gang_TerritoryPayout", "Dubz_Gang_TerritoryPayout_Handler", funct
             for _, ply in ipairs(onlineMembers) do
                 if IsValid(ply) then
                     AddMoney(ply, per)
+                    GangNotify(ply, 0, 4, string.format("You earned $%d from your gang's territory (%s).", per, territoryName))
                 end
+            end
+        end
+    end
+
+    --------------------------------------------------
+    -- Presence bonus for defenders on-site
+    --------------------------------------------------
+    local holders = {}
+    local bonusAmount = math.max(100, math.floor((incomeCfg.TotalPerTick or 500) * 0.3))
+    for _, ply in ipairs(player.GetAll()) do
+        if not IsValid(ply) then continue end
+        if Dubz.GangByMember[ply:SteamID64()] ~= gangId then continue end
+
+        local dist = (ply:GetPos() - ent:GetPos()):Length()
+        if dist <= 500 then
+            table.insert(holders, ply)
+        end
+    end
+
+    for _, ply in ipairs(holders) do
+        AddMoney(ply, bonusAmount)
+        GangNotify(ply, 0, 4, string.format("Holding %s paid you $%d for staying on-site.", territoryName, bonusAmount))
+    end
+
+    if territoryName and territoryName ~= "" and gang.leaderSid64 then
+        for _, ply in ipairs(player.GetAll()) do
+            if IsValid(ply) and ply:SteamID64() == gang.leaderSid64 then
+                GangNotify(ply, 0, 5, string.format("Territory %s paid out to your gang.", territoryName))
             end
         end
     end
@@ -690,18 +738,104 @@ local function CanAfford(ply, amt)
     local m = (ply.getDarkRPVar and ply:getDarkRPVar("money")) or 0
     return m >= amt
 end
-local function AddMoney(ply, amt)
+function AddMoney(ply, amt)
     if DarkRP and ply.addMoney then ply:addMoney(amt) return end
     -- fallback local var
     ply._Dubz_Money = (ply._Dubz_Money or 0) + amt
 end
-local function TakeMoney(ply, amt)
+function TakeMoney(ply, amt)
     if DarkRP and ply.addMoney then ply:addMoney(-math.abs(amt)) return end
     ply._Dubz_Money = (ply._Dubz_Money or 0) - math.abs(amt)
 end
 
 -- INVITES
 local PendingInvites = {} -- targetSid64 -> {from=leaderSid64, gid=gid, expire=time}
+
+-- WAR VOTES
+local function BroadcastWarVotePrompt(voteId, challenger, target, duration)
+    local function sendToGang(gid)
+        for _, ply in ipairs(player.GetAll()) do
+            if not IsValid(ply) then continue end
+            if Dubz.GangByMember[ply:SteamID64()] ~= gid then continue end
+
+            net.Start("Dubz_GangWar_VotePrompt")
+                net.WriteString(voteId)
+                net.WriteString(challenger)
+                net.WriteString(target)
+                net.WriteFloat(duration)
+            net.Send(ply)
+        end
+    end
+
+    sendToGang(challenger)
+    sendToGang(target)
+end
+
+local function EvaluateWarVote(voteId)
+    local vote = ActiveWarVotes[voteId]
+    if not vote then return end
+
+    local challenger = vote.challenger
+    local target = vote.target
+
+    local function passed(gid)
+        local data = vote.votes[gid] or { yes = 0, no = 0 }
+        return data.yes > data.no and data.yes > 0
+    end
+
+    local challengerOk = passed(challenger)
+    local targetOk = passed(target)
+
+    if challengerOk and targetOk then
+        ActiveWarVotes[voteId] = nil
+
+        local duration = CFG.Wars and CFG.Wars.Duration or 1800
+        local countdown = 5
+
+        local function beginWar()
+            local g = Dubz.Gangs[challenger]
+            local e = Dubz.Gangs[target]
+            if not g or not e then return end
+
+            g.wars = g.wars or {}
+            e.wars = e.wars or {}
+
+            g.wars.active = true
+            g.wars.enemy = target
+            g.wars.started = CurTime() + countdown
+            g.wars.ends = g.wars.started + duration
+
+            e.wars.active = true
+            e.wars.enemy = challenger
+            e.wars.started = g.wars.started
+            e.wars.ends = g.wars.ends
+
+            SaveGangs()
+            BroadcastUpdate(challenger)
+            BroadcastUpdate(target)
+
+            timer.Simple(countdown, function()
+                if not Dubz.Gangs[challenger] or not Dubz.Gangs[target] then return end
+                net.Start("Dubz_GangWar_Start")
+                    net.WriteString(challenger)
+                    net.WriteString(target)
+                    net.WriteFloat(g.wars.ends)
+                net.Broadcast()
+            end)
+        end
+
+        net.Start("Dubz_GangWar_Countdown")
+            net.WriteString(challenger)
+            net.WriteString(target)
+            net.WriteFloat(countdown)
+        net.Broadcast()
+
+        beginWar()
+        return true
+    end
+
+    return false
+end
 
 local function SendInvite(target, fromPly, gid)
     local sidT = target:SteamID64()
@@ -1113,7 +1247,12 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         -- FONT
         --------------------------------------------------
         if act.font and act.font ~= "" then
-            g.graffiti.font = tostring(act.font)
+            local desired = tostring(act.font)
+            if IsValidGraffitiFont(desired) then
+                g.graffiti.font = desired
+            else
+                g.graffiti.font = (Dubz.Config.GraffitiFonts[1] and Dubz.Config.GraffitiFonts[1].id) or g.graffiti.font
+            end
         end
 
         --------------------------------------------------
@@ -1190,32 +1329,68 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
 
             TakeMoney(ply, CFG.Wars.DeclareCost or 0)
 
-            g.wars = g.wars or {}
-            g.wars.active = true
-            g.wars.enemy = enemy
-            g.wars.started = CurTime()
-            g.wars.ends = CurTime() + (CFG.Wars.Duration or 1800)
+            local voteId = string.format("%s_vs_%s", gid, enemy)
+            ActiveWarVotes[voteId] = {
+                challenger = gid,
+                target = enemy,
+                expires = CurTime() + (CFG.Wars.VoteDuration or 30),
+                votes = {
+                    [gid] = { yes = 0, no = 0, voters = {} },
+                    [enemy] = { yes = 0, no = 0, voters = {} }
+                }
+            }
 
-            local e = Dubz.Gangs[enemy]
-            e.wars = e.wars or {}
-            e.wars.active = true
-            e.wars.enemy = gid
-            e.wars.started = g.wars.started
-            e.wars.ends = g.wars.ends
+            BroadcastWarVotePrompt(voteId, gid, enemy, (CFG.Wars.VoteDuration or 30))
 
-            SaveGangs()
-            BroadcastUpdate(gid)
-            BroadcastUpdate(enemy)
+            timer.Create("Dubz_WarVote_" .. voteId, (CFG.Wars.VoteDuration or 30), 1, function()
+                if not ActiveWarVotes[voteId] then return end
+                local ok = EvaluateWarVote(voteId)
+                ActiveWarVotes[voteId] = nil
+                if not ok then
+                    for _, p in ipairs(player.GetAll()) do
+                        if not IsValid(p) then continue end
+                        local sid = p:SteamID64()
+                        local gVote = Dubz.GangByMember[sid]
+                        if gVote == gid or gVote == enemy then
+                            GangNotify(p, 1, 5, "War vote failed to pass.")
+                        end
+                    end
+                end
+            end)
 
-            -- NEW: War HUD Start
-            net.Start("Dubz_GangWar_Start")
-                net.WriteString(gid)
-                net.WriteString(enemy)
-                net.WriteFloat(g.wars.ends)
-            net.Broadcast()
+            GangNotify(ply, 0, 5, "War vote started! Rally your gang to approve it.")
 
-            GangNotify(ply, 0, 5, "War declared against " .. (e.name or enemy) .. "!")
+            return
+        end
 
+        if act.cmd == "vote_war" and gid then
+            local sid = ply:SteamID64()
+            for voteId, vote in pairs(ActiveWarVotes) do
+                if CurTime() > (vote.expires or 0) then continue end
+                if vote.challenger ~= gid and vote.target ~= gid then continue end
+
+                local gangVotes = vote.votes[gid]
+                if not gangVotes then continue end
+                if gangVotes.voters[sid] then
+                    GangNotify(ply, 1, 4, "You already voted.")
+                    return
+                end
+
+                local choice = tostring(act.choice or "") == "true" or act.choice == true
+                gangVotes.voters[sid] = choice
+                if choice then
+                    gangVotes.yes = gangVotes.yes + 1
+                    GangNotify(ply, 0, 4, "You voted YES for the gang war.")
+                else
+                    gangVotes.no = gangVotes.no + 1
+                    GangNotify(ply, 1, 4, "You voted NO for the gang war.")
+                end
+
+                EvaluateWarVote(voteId)
+                return
+            end
+
+            GangNotify(ply, 1, 4, "No active war vote for your gang.")
             return
         end
 

@@ -337,6 +337,8 @@ function EnsureGraffitiFont(gang)
         _G.DubzGraffitiFonts[fontName] = true
     end
 
+    gang.graffiti.fontScaled = fontName
+
     return fontName
 end
 
@@ -384,7 +386,7 @@ local function OpenGraffitiEditor(accent)
         draw.RoundedBox(6, 0, 0, pw, ph, Color(25, 25, 25, 220))
 
         local text = g.graffiti.text or g.name or ""
-        local font = g.graffiti.fontScaled or g.graffiti.font or "DubzHUD_Header"
+        local font = EnsureGraffitiFont(g)
         local eff  = g.graffiti.effect or "Clean"
         local col  = g.graffiti.color or g.color or { r=255,g=255,b=255 }
 
@@ -447,6 +449,7 @@ local function OpenGraffitiEditor(accent)
 
     local defaultFont = g.graffiti.font or fonts[1] or "DubzHUD_Header"
     g.graffiti.font = defaultFont
+    EnsureGraffitiFont(g)
     fontBox:SetValue(defaultFont)
 
     for _, f in ipairs(fonts) do
@@ -599,6 +602,7 @@ local function OpenGraffitiEditor(accent)
             cmd          = "setgraffiti",
             text         = g.graffiti.text or "",
             font         = g.graffiti.font or "DubzHUD_Header",
+            fontScaled   = EnsureGraffitiFont(g),
             scale        = g.graffiti.scale or 1,
             effect       = g.graffiti.effect or "Clean",
             outlineSize  = g.graffiti.outlineSize,
