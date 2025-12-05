@@ -15,9 +15,17 @@ function Dubz.Graffiti.GetGangGraffiti(gang)
         text = gang.name or "Gang"
     end
 
-    local cfgFonts = Dubz.Config.Graffiti.Fonts or {}
-    local defaultFont = cfgFonts[1] or "DermaLarge"
-    local font  = g.font or defaultFont
+    local cfgFonts = Dubz.Config.GraffitiFonts or {}
+    local defaultFont = (cfgFonts[1] and cfgFonts[1].id) or "DermaLarge"
+
+    local font = g.font or defaultFont
+    local valid = false
+    for _, f in ipairs(cfgFonts) do
+        if f.id == font then valid = true break end
+    end
+    if not valid then
+        font = defaultFont
+    end
 
     local scale = tonumber(g.scale) or 1
 
@@ -120,9 +128,65 @@ end
 -------------------------------------------------
 if CLIENT then
 
+-- graffiti font helpers (use configured font files and cache scaled variants)
+local graffitiFontCache = {
+    base = {},
+    scaled = {}
+}
+
+local function GetGraffitiFontEntry(id)
+    for _, f in ipairs(Dubz.Config.GraffitiFonts or {}) do
+        if f.id == id then return f end
+    end
+    return nil
+end
+
+local function EnsureBaseFont(id)
+    local entry = GetGraffitiFontEntry(id)
+    if not entry then return "Trebuchet24" end
+
+    local baseName = "DubzGraff_" .. entry.id .. "_Base"
+    if graffitiFontCache.base[baseName] then return baseName end
+
+    surface.CreateFont(baseName, {
+        font = entry.file,
+        size = 48,
+        weight = 900,
+        antialias = true,
+        extended = true
+    })
+
+    graffitiFontCache.base[baseName] = true
+    return baseName
+end
+
+local function EnsureScaledFont(id, scale)
+    scale = math.max(0.5, tonumber(scale) or 1)
+
+    local base = EnsureBaseFont(id)
+    local scaleKey = string.format("%0.2f", scale)
+    local scaledName = base .. "_S" .. scaleKey
+
+    if graffitiFontCache.scaled[scaledName] then
+        return scaledName
+    end
+
+    surface.CreateFont(scaledName, {
+        font      = base,
+        size      = math.floor(48 * scale),
+        weight    = 900,
+        antialias = true,
+        extended  = true
+    })
+
+    graffitiFontCache.scaled[scaledName] = true
+    return scaledName
+end
+
 -- Fonts
+local defaultGraffitiFont = (Dubz.Config.GraffitiFonts[1] and Dubz.Config.GraffitiFonts[1].file) or "Roboto"
 surface.CreateFont("Dubz_Graffiti_Main", {
-    font = "Capture it",   -- change to your graffiti font (make sure it's installed)
+    font = defaultGraffitiFont,
     size = 64,
     weight = 800,
     antialias = true,
@@ -130,7 +194,7 @@ surface.CreateFont("Dubz_Graffiti_Main", {
 })
 
 surface.CreateFont("Dubz_Graffiti_Outline", {
-    font = "Capture it",
+    font = defaultGraffitiFont,
     size = 64,
     weight = 800,
     antialias = true,
@@ -159,27 +223,15 @@ function Dubz.Graffiti.Draw2D(x, y, w, h, gang)
 
     local data  = gang.graffiti
     local text  = data.text  or gang.name or "Gang"
-    local font  = data.font  or "Trebuchet24"
+    local fontId = data.font  or ((Dubz.Config.GraffitiFonts[1] and Dubz.Config.GraffitiFonts[1].id) or "Trebuchet24")
     local scale = tonumber(data.scale or 1)
     local effect = data.effect or "Clean"
 
     ---------------------------------------------------------
     -- CREATE THE SCALED FONT (unique per gang)
     ---------------------------------------------------------
-    local scaledFontName = font .. "_scaled_" .. tostring(scale)
-
-    if not dubz_font_cache then dubz_font_cache = {} end
-
-    if not dubz_font_cache[scaledFontName] then
-        surface.CreateFont(scaledFontName, {
-            font = font,
-            size = math.floor(48 * scale),
-            weight = 800,
-            antialias = true,
-            extended = true
-        })
-        dubz_font_cache[scaledFontName] = true
-    end
+    local scaledFontName = EnsureScaledFont(fontId, scale)
+    data.fontScaled = scaledFontName
 
     ---------------------------------------------------------
     -- GANG COLOR
