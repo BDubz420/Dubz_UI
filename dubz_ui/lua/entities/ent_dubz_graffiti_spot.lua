@@ -128,6 +128,23 @@ function ENT:Use(ply)
         return
     end
 
+    if self:GetIsClaimed() and self:GetOwnerGangId() ~= gid and (not self._lastAlert or self._lastAlert < CurTime()) then
+        local owners = {}
+        for _, p in ipairs(player.GetAll()) do
+            if not IsValid(p) then continue end
+            if Dubz.GangByMember and Dubz.GangByMember[p:SteamID64()] == self:GetOwnerGangId() then
+                table.insert(owners, p)
+            end
+        end
+
+        local terrName = self:GetTerritoryName() ~= "" and self:GetTerritoryName() or "a territory"
+        for _, p in ipairs(owners) do
+            p:ChatPrint(string.format("[Gang] Someone is attempting to claim %s!", terrName))
+        end
+
+        self._lastAlert = CurTime() + 10
+    end
+
     self.IsClaiming[ply] = {
         start = CurTime(),
         gang  = gid
@@ -191,6 +208,8 @@ function ENT:FinishClaim(ply, gid)
     local gang = Dubz.Gangs and Dubz.Gangs[gid]
     if not gang then return end
 
+    local previous = self:GetOwnerGangId()
+
     if self:GetIsClaimed() then
         self:ResetOwnership()
     end
@@ -216,6 +235,17 @@ function ENT:FinishClaim(ply, gid)
     net.Start("Dubz_Graffiti_ClaimFinished")
         net.WriteEntity(self)
     net.Broadcast()
+
+    if previous ~= "" and Dubz.Gangs[previous] then
+        local gWars = gang.wars
+        if gWars and gWars.active and gWars.enemy == previous then
+            local bonus = 750
+            if IsValid(ply) then
+                AddMoney(ply, bonus)
+                ply:ChatPrint(string.format("[Gang] Claim bonus: You earned $%d for taking enemy territory!", bonus))
+            end
+        end
+    end
 end
 
 function ENT:OnRemove()

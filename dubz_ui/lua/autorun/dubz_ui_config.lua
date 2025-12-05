@@ -229,7 +229,17 @@ Dubz.Config.Territories = {
 }
 
 Dubz.Config.GraffitiFonts = {
-    { id = "StreetBold", file = "streetwars.ttf" },
-    { id = "SpraySharp", file = "spraysharp.ttf" },
-    { id = "UrbanTag",   file = "urbantag.ttf" }
+    { id = "StreetWars",           file = "StreetWars.ttf" },
+    { id = "Adrip",                file = "adrip1.ttf" },
+    { id = "AerosoldierBasic",     file = "AerosoldierBasic.otf" },
+    { id = "AerosoldierDrip",      file = "AerosoldierDrip.otf" },
+    { id = "AerosoldierSpray",     file = "AerosoldierSpray.otf" },
+    { id = "Bluetag",              file = "Bluetag.otf" },
+    { id = "UrbanBlocker",         file = "UrbanBlocker.ttf" },
+    { id = "Mostwasted",           file = "Mostwasted.ttf" },
+    { id = "GraffPunks",           file = "GraffPunks.ttf" },
+    { id = "DonGraffiti",          file = "DonGraffiti.otf" },
+    { id = "SparticalGraffiti",    file = "SparticalGraffiti.otf" },
+    { id = "SparticalGraffitiLine",file = "SparticalGraffitiLine.otf" },
+    { id = "AnotherTag",           file = "aAnotherTag.ttf" }
 }
