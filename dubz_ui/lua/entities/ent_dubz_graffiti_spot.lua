@@ -178,6 +178,11 @@ function ENT:Think()
         end
     end
 
+    local gid = self:GetOwnerGangId()
+    if gid ~= "" and (not Dubz.Gangs or not Dubz.Gangs[gid]) then
+        self:ResetOwnership("Unclaimed Territory")
+    end
+
     self:NextThink(CurTime())
     return true
 end
@@ -221,11 +226,34 @@ end
 
 end -- SERVER
 
+hook.Add("Dubz_Gang_Disbanded", "Dubz_Territory_ResetOnDisband", function(gid)
+    if not gid or gid == "" then return end
+
+    for _, ent in ipairs(ents.FindByClass("ent_dubz_graffiti_spot")) do
+        if IsValid(ent) and ent.GetOwnerGangId and ent:GetOwnerGangId() == gid then
+            ent:ResetOwnership("Unclaimed Territory")
+            ent.ClaimProg = nil
+            ent.ProgTime  = nil
+        end
+    end
+end)
 
 -----------------------------------------------------
 -- CLIENT
 -----------------------------------------------------
 if CLIENT then
+
+local TerritoryHUD_Active = false
+local TerritoryHUD_Ent = nil
+local TerritoryHUD_End = 0
+local TerritoryHUD_Lerp = 0
+local TerritoryHUD_BlockUntilRelease = false
+
+surface.CreateFont("DumpsterFont", {
+    font = "Roboto",
+    size = 32,
+    weight = 600
+})
 
 -----------------------------------------------------
 -- NET
@@ -235,55 +263,32 @@ net.Receive("Dubz_Graffiti_ClaimProgress", function()
     if not IsValid(ent) then return end
 
     local prog = net.ReadFloat()
-    if prog and prog < 0 then
-        ent.ClaimProg = nil
-        ent.ProgTime  = nil
+
+    -- Reset / stop claiming
+    if prog < 0 then
+        TerritoryHUD_Active = false
+        TerritoryHUD_Ent = nil
+        TerritoryHUD_Lerp = 0
         return
     end
 
-    ent.ClaimProg = prog
-    ent.ProgTime  = CurTime()
+    -- Setup HUD tracking
+    if TerritoryHUD_BlockUntilRelease then return end
+
+    -- Setup HUD tracking
+    TerritoryHUD_Active = true
+    TerritoryHUD_Ent = ent
+    TerritoryHUD_End = CurTime() + (1 - prog) * 4
 end)
 
 net.Receive("Dubz_Graffiti_ClaimFinished", function()
     local ent = net.ReadEntity()
     if not IsValid(ent) then return end
 
+    TerritoryHUD_Active = false
     ent.ClaimProg = nil
     ent.ProgTime  = nil
 end)
-
-
------------------------------------------------------
--- BORDER + CIRCLE HELPERS
------------------------------------------------------
-local function DrawDottedBorder(x, y, w, h)
-    surface.SetDrawColor(255,255,255,255)
-    local step = 14
-
-    for i = 0, w, step do
-        surface.DrawRect(x + i, y, step/2, 3)
-        surface.DrawRect(x + i, y + h - 3, step/2, 3)
-    end
-
-    for i = 0, h, step do
-        surface.DrawRect(x, y + i, 3, step/2)
-        surface.DrawRect(x + w - 3, y + i, 3, step/2)
-    end
-end
-
-local function DrawCircle(x, y, r, col, perc)
-    surface.SetDrawColor(col)
-    draw.NoTexture()
-
-    local poly = {{x = x, y = y}}
-    for i = 0, perc * 360 do
-        local rad = math.rad(i)
-        poly[#poly+1] = { x = x + math.cos(rad)*r, y = y + math.sin(rad)*r }
-    end
-    surface.DrawPoly(poly)
-end
-
 
 -----------------------------------------------------
 -- MAIN 3D2D
@@ -355,12 +360,110 @@ function ENT:Draw()
     cam.End3D2D()
 
     -----------------------------------------------------
-    -- PROGRESS CIRCLE (kept as-is)
+    -- TERRITORY PROGRESS BAR
     -----------------------------------------------------
     if self.ClaimProg then
+        -- Smooth lerp to make the bar animate cleanly
+        TerritoryProgressLerp = Lerp(
+            math.Clamp(FrameTime() * 10, 0, 1),
+            TerritoryProgressLerp,
+            math.Clamp(self.ClaimProg, 0, 1)
+        )
+
         cam.Start3D2D(drawPos, drawAng, 0.25)
-            DrawCircle(191.5, -191.5, 80, Color(0,200,0,180), math.Clamp(self.ClaimProg, 0, 1))
+
+            local barW = 360
+            local barH = 40
+            local barX = 191.5 - barW/2
+            local barY = -191.5 - 120
+
+            -- background
+            draw.RoundedBox(8, barX, barY, barW, barH, Color(0,0,0,180))
+
+            -- fill based on progress
+            local fillW = barW * TerritoryProgressLerp
+            draw.RoundedBox(8, barX, barY, fillW, barH, Color(0,140,255,230))
+
+            -- label text
+            draw.SimpleText(
+                "Claiming territory...",
+                "DumpsterFont",
+                191.5,
+                barY + barH/2,
+                Color(255,255,255),
+                TEXT_ALIGN_CENTER,
+                TEXT_ALIGN_CENTER
+            )
+
         cam.End3D2D()
+    else
+        -- reset lerp when not claiming
+        TerritoryProgressLerp = 0
     end
 end
+
+hook.Add("Think", "Dubz_Territory_ClaimThink", function()
+    if not TerritoryHUD_Active then return end
+    if not IsValid(TerritoryHUD_Ent) then
+        TerritoryHUD_Active = false
+        return
+    end
+
+    if not LocalPlayer():KeyDown(IN_USE) then
+        TerritoryHUD_Active = false
+        return
+    end
+
+    -- Finished?
+    if CurTime() >= TerritoryHUD_End then
+        TerritoryHUD_Active = false
+        
+        -- Block HUD until E is released
+        TerritoryHUD_BlockUntilRelease = true
+    end
+end)
+
+hook.Add("HUDPaint", "Dubz_Territory_ClaimBar", function()
+    if not TerritoryHUD_Active then return end
+
+    local w = 400
+    local h = 40
+    local x = ScrW() / 2 - w / 2
+    local y = ScrH() / 2 + 100
+
+    -- Calculate progress based on remaining time
+    local remaining = math.max(0, TerritoryHUD_End - CurTime())
+    local total = 4   -- CLAIM_TIME
+    local progress = 1 - (remaining / total)
+
+    -- Smooth animation
+    TerritoryHUD_Lerp = Lerp(FrameTime() * 8, TerritoryHUD_Lerp, progress)
+
+    -- Background
+    draw.RoundedBox(8, x, y, w, h, Color(0,0,0,180))
+
+    -- Fill
+    draw.RoundedBox(8, x, y, w * TerritoryHUD_Lerp, h, Color(0,140,255,230))
+
+    -- Text
+    draw.SimpleText(
+        "Claiming territory...",
+        "DumpsterFont",
+        ScrW() / 2,
+        y + h / 2,
+        Color(255,255,255),
+        TEXT_ALIGN_CENTER,
+        TEXT_ALIGN_CENTER
+    )
+end)
+
+hook.Add("Think", "Dubz_Territory_ClearBlock", function()
+    if not TerritoryHUD_BlockUntilRelease then return end
+
+    -- Player released E → remove block
+    if not LocalPlayer():KeyDown(IN_USE) then
+        TerritoryHUD_BlockUntilRelease = false
+    end
+end)
+
 end -- CLIENT

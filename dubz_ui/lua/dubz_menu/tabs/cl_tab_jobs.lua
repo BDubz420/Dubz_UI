@@ -194,13 +194,28 @@ Dubz.RegisterTab("jobs", "Jobs", "jobs", function(parent)
             function btn:DoClick()
                 if not job.command then return end
 
-                -- If the job requires a vote, use the vote command
+                -- Count players online
+                local plyCount = #player.GetAll()
+
+                -- If the job requires a vote
                 if job.vote == true then
-                    RunConsoleCommand("darkrp", "vote" .. job.command)
-                else
-                    -- Otherwise, become the job instantly
-                    RunConsoleCommand("darkrp", job.command)
+
+                    -- Auto-pass vote when player is alone
+                    if plyCount <= 1 then
+                        notification.AddLegacy("You're alone in the server. Vote skipped!", NOTIFY_HINT, 4)
+                        surface.PlaySound("buttons/button14.wav")
+
+                        RunConsoleCommand("darkrp", job.command)
+                        return
+                    end
+
+                    -- 🔥 Use the real Dubz voting system
+                    RunConsoleCommand("dubz_jobvote", job.command)
+                    return
                 end
+
+                -- If no vote needed, take job directly
+                RunConsoleCommand("darkrp", job.command)
             end
 
             ------------------------------------------------------------------

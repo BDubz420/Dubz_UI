@@ -2,6 +2,37 @@ if not Dubz then Dubz = {} end
 include("dubz_menu/gangs/sh_gangs.lua")
 
 --------------------------------------------------------
+-- Fonts (extra ones used ONLY here)
+--------------------------------------------------------
+if not Dubz._GangFonts then
+    Dubz._GangFonts = true
+
+    surface.CreateFont("DubzHUD_Title", {
+        font   = "Roboto Bold",
+        size   = 24,
+        weight = 800
+    })
+
+    surface.CreateFont("DubzHUD_Label", {
+        font   = "Roboto",
+        size   = 16,
+        weight = 500
+    })
+
+    surface.CreateFont("DubzHUD_Tag", {
+        font   = "Roboto",
+        size   = 14,
+        weight = 400
+    })
+
+    surface.CreateFont("DubzHUD_BodyBold", {
+        font   = "Roboto Bold",
+        size   = 18,
+        weight = 600
+    })
+end
+
+--------------------------------------------------------
 -- Client cache (backed by Dubz globals so entities can use Dubz.Gangs)
 --------------------------------------------------------
 Dubz.Gangs    = Dubz.Gangs    or {}
@@ -11,6 +42,7 @@ Dubz.MyRank   = Dubz.MyRank   or 0
 --------------------------------------------------------
 -- Helpers
 --------------------------------------------------------
+
 local function SendAction(tbl)
     net.Start("Dubz_Gang_Action")
     net.WriteTable(tbl)
@@ -30,7 +62,7 @@ local function IsLeaderC()
     end
     local g = GetMyGang()
     if not g then return false end
-    return (Dubz.MyRank or 0) >= Dubz.GangRanks.Leader
+    return (Dubz.MyRank or 0) >= (Dubz.GangRanks.Leader or 3)
 end
 
 -- Simple UI refresh helper so the active panel can re-layout when data changes
@@ -73,7 +105,7 @@ local function GetGangTerritories(gid)
         return list
     end
 
-    -- Use the graffiti territory entity as the source of truth
+    -- Fallback: query territory entities
     for _, ent in ipairs(ents.FindByClass("ent_dubz_graffiti_spot")) do
         if IsValid(ent) and ent.GetOwnerGangId and ent:GetOwnerGangId() == gid then
             local name = ""
@@ -107,20 +139,24 @@ local function QueueMenuRefresh(force)
     end
 end
 
-hook.Add("Dubz_Gangs_FullSync", "Dubz_Gangs_Tab_FullRefresh", function()
-    QueueMenuRefresh(true)
-end)
-hook.Add("Dubz_Gangs_MyStatus", "Dubz_Gangs_Tab_StatusRefresh", QueueMenuRefresh)
-hook.Add("Dubz_Gangs_GangUpdated", "Dubz_Gangs_Tab_UpdateRefresh", QueueMenuRefresh)
+hook.Add("Dubz_Gangs_FullSync",   "Dubz_Gangs_Tab_FullRefresh",   function() QueueMenuRefresh(true) end)
+hook.Add("Dubz_Gangs_MyStatus",   "Dubz_Gangs_Tab_StatusRefresh", QueueMenuRefresh)
+hook.Add("Dubz_Gangs_GangUpdated","Dubz_Gangs_Tab_UpdateRefresh", QueueMenuRefresh)
 
 --------------------------------------------------------
 -- UI drawing helpers
 --------------------------------------------------------
-local function Bubble(x,y,w,h)
-    if Dubz.DrawBubble then
-        Dubz.DrawBubble(x,y,w,h, Color(24,24,24,220))
-    else
-        draw.RoundedBox(12, x,y,w,h, Color(24,24,24,220))
+
+local function PanelFrame(x, y, w, h, accent, side)
+    side = side or "left"
+
+    draw.RoundedBox(8, x, y, w, h, Color(18,18,18,235))
+
+    surface.SetDrawColor(accent.r, accent.g, accent.b, 255)
+    if side == "top" then
+        surface.DrawRect(x, y, w, 3)
+    else -- left
+        surface.DrawRect(x, y, 3, h)
     end
 end
 
@@ -132,10 +168,10 @@ end
 -- CREATE GANG UI
 --------------------------------------------------------
 local function DrawCreateGang(pnl, w, y, accent)
-    local bw, bh = w, 160
+    local bw, bh = w - 24, 170
 
-    Bubble(12, y, bw - 24, bh)
-    draw.SimpleText("Create Organization", "DubzHUD_Header", 24, y + 10, accent)
+    PanelFrame(12, y, bw, bh, accent, "top")
+    draw.SimpleText("Create Organization", "DubzHUD_Title", 24, y + 10, accent)
 
     if not pnl._create then
         pnl._create = {}
@@ -143,20 +179,17 @@ local function DrawCreateGang(pnl, w, y, accent)
         -- Name
         local name = vgui.Create("DTextEntry", pnl)
         if Dubz.HookTextEntry then Dubz.HookTextEntry(name) end
-        name:SetPos(24, y + 52)
         name:SetSize(260, 24)
         name:SetPlaceholderText("Gang Name (max 24)")
 
         -- Desc
         local desc = vgui.Create("DTextEntry", pnl)
         if Dubz.HookTextEntry then Dubz.HookTextEntry(desc) end
-        desc:SetPos(24, y + 82)
         desc:SetSize(bw - 24 - 24 - 220, 24)
         desc:SetPlaceholderText("Description (optional)")
 
         -- Color
         local col = vgui.Create("DColorMixer", pnl)
-        col:SetPos(bw - 24 - 200, y + 40)
         col:SetSize(190, 100)
         col:SetPalette(false)
         col:SetAlphaBar(false)
@@ -168,13 +201,12 @@ local function DrawCreateGang(pnl, w, y, accent)
         -- Button
         local btn = vgui.Create("DButton", pnl)
         btn:SetText("")
-        btn:SetPos(24, y + 114)
         btn:SetSize(200, 24)
-        function btn:Paint(w,h)
-            draw.RoundedBox(6, 0, 0, w, h, accent)
+        function btn:Paint(w2,h2)
+            draw.RoundedBox(6, 0, 0, w2, h2, accent)
             draw.SimpleText(
                 "Create ($"..(Dubz.Config.Gangs.StartCost or 0)..")",
-                "DubzHUD_Small", w / 2, h / 2,
+                "DubzHUD_Small", w2 / 2, h2 / 2,
                 Color(255,255,255),
                 TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER
             )
@@ -228,48 +260,51 @@ local function DrawCreateGang(pnl, w, y, accent)
         pnl._create.desc = desc
         pnl._create.col  = col
         pnl._create.btn  = btn
-    else
-        if IsValid(pnl._create.name) then pnl._create.name:SetPos(24, y + 52) end
-        if IsValid(pnl._create.desc) then pnl._create.desc:SetPos(24, y + 82) end
-        if IsValid(pnl._create.col)  then pnl._create.col:SetPos(bw - 24 - 200, y + 40) end
-        if IsValid(pnl._create.btn)  then pnl._create.btn:SetPos(24, y + 114) end
+    end
+
+    -- positions (so they follow y)
+    if IsValid(pnl._create.name) then
+        pnl._create.name:SetPos(24, y + 52)
+    end
+    if IsValid(pnl._create.desc) then
+        pnl._create.desc:SetPos(24, y + 82)
+    end
+    if IsValid(pnl._create.col) then
+        pnl._create.col:SetPos(w - 24 - 200, y + 44)
+    end
+    if IsValid(pnl._create.btn) then
+        pnl._create.btn:SetPos(24, y + 116)
     end
 
     return y + bh + 12
 end
 
 --------------------------------------------------------
--- GANG TERRITORIES (GRAFFITI SYSTEM)
+-- TERRITORIES
 --------------------------------------------------------
 local function DrawTerritories(pnl, w, y, accent, g)
     local territories = GetGangTerritories(g.id)
-    local count = #territories
+    local count       = #territories
 
-    local rowH    = 28
-    local headerH = 50
-    local totalH  = headerH + (count > 0 and (rowH * count) or rowH) + 12
+    local rowH  = 22
+    local baseH = 52
+    local totalH = baseH + math.max(1, count) * rowH
 
-    Bubble(12, y, w - 24, totalH)
-    draw.SimpleText("Territories Controlled", "DubzHUD_Header", 24, y + 10, accent)
+    PanelFrame(12, y, w - 24, totalH, accent, "left")
+    draw.SimpleText("Territories Controlled", "DubzHUD_Title", 28, y + 10, accent)
 
-    local yy = y + headerH
+    local yy = y + 40
 
     if count == 0 then
         draw.SimpleText(
-            "Your gang hasn’t sprayed (claimed) any territories yet.",
+            "Your gang hasn’t claimed any territories yet.",
             "DubzHUD_Body",
-            24, yy,
-            Color(220, 220, 220)
+            28, yy,
+            Color(220,220,220)
         )
-        yy = yy + rowH
     else
         for _, name in ipairs(territories) do
-            draw.SimpleText(
-                "• " .. name,
-                "DubzHUD_Body",
-                24, yy,
-                Color(230, 230, 230)
-            )
+            draw.SimpleText("• " .. name, "DubzHUD_Body", 28, yy, Color(230,230,230))
             yy = yy + rowH
         end
     end
@@ -278,634 +313,548 @@ local function DrawTerritories(pnl, w, y, accent, g)
 end
 
 --------------------------------------------------------
--- GANG GRAFFITI PREVIEW (Option 2 data model)
+-- GRAFFITI FONTS
+--------------------------------------------------------
+function EnsureGraffitiFont(gang)
+    if not gang or not gang.graffiti then return "DubzHUD_Header" end
+
+    local fontID = gang.graffiti.font or "DubzHUD_Header"
+    local base = "DubzGraff_" .. fontID .. "_Base"
+
+    local scale = math.max(0.5, gang.graffiti.scale or 1)
+    local fontName = base .. "_S" .. tostring(scale)
+
+    _G.DubzGraffitiFonts = _G.DubzGraffitiFonts or {}
+
+    if not _G.DubzGraffitiFonts[fontName] then
+        surface.CreateFont(fontName, {
+            font      = base,
+            size      = math.floor(40 * scale),
+            weight    = 900,
+            antialias = true,
+            extended  = true
+        })
+        _G.DubzGraffitiFonts[fontName] = true
+    end
+
+    return fontName
+end
+
+
+--------------------------------------------------------
+-- FULL GRAFFITI / IDENTITY EDITOR
+--------------------------------------------------------
+local function OpenGraffitiEditor(accent)
+    local g = GetMyGang()
+    if not g then return end
+    if not IsLeaderC() then return end
+
+    g.graffiti = g.graffiti or {}
+    g.graffiti.bgMat        = g.graffiti.bgMat        or "brick/brick_model"
+    g.graffiti.scale        = g.graffiti.scale        or 1
+    g.graffiti.outlineSize  = g.graffiti.outlineSize  or 1
+    g.graffiti.shadowOffset = g.graffiti.shadowOffset or 2
+    g.graffiti.effect       = g.graffiti.effect       or "Clean"
+    g.graffiti.color        = g.graffiti.color        or g.color or { r=255,g=255,b=255 }
+    g.graffiti.text         = g.graffiti.text         or g.name or "Gang"
+
+    EnsureGraffitiFont(g)
+
+    local frame = vgui.Create("DFrame")
+    frame:SetTitle("")
+    frame:SetSize(760, 470)
+    frame:Center()
+    frame:MakePopup()
+    frame.Paint = function(self, w, h)
+        draw.RoundedBox(8, 0, 0, w, h, Color(15,15,15,245))
+        surface.SetDrawColor(accent)
+        surface.DrawRect(0, 0, w, 4)
+
+        draw.SimpleText("Gang Identity Studio", "DubzHUD_Title", 16, 10, accent)
+        draw.SimpleText("Customize graffiti, fonts and gang color with live preview.",
+            "DubzHUD_Tag", 16, 34, Color(200,200,200))
+    end
+
+    -----------------------------------------------------
+    -- PREVIEW
+    -----------------------------------------------------
+    local bgMatName = g.graffiti.bgMat or "brick/brick_model"
+
+    local preview = vgui.Create("DPanel", frame)
+    preview:SetPos(20, 60)
+    preview:SetSize(320, 220)
+    preview.Paint = function(self, pw, ph)
+        surface.SetMaterial(Material(bgMatName, "smooth"))
+        surface.SetDrawColor(255,255,255)
+        surface.DrawTexturedRect(0, 0, pw, ph)
+
+        local text = g.graffiti.text or g.name or ""
+        local font = g.graffiti.fontScaled or g.graffiti.font or "DubzHUD_Header"
+        local eff  = g.graffiti.effect or "Clean"
+        local col  = g.graffiti.color or g.color or { r=255,g=255,b=255 }
+
+        local x = pw / 2
+        local y = ph / 2
+
+        if eff == "Shadow" then
+            local off = g.graffiti.shadowOffset or 2
+            draw.SimpleText(text, font, x + off, y + off,
+                Color(0,0,0,220), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        elseif eff == "Outline" then
+            local thick = g.graffiti.outlineSize or 1
+            for ox = -thick, thick do
+                for oy = -thick, thick do
+                    if ox ~= 0 or oy ~= 0 then
+                        draw.SimpleText(text, font, x + ox, y + oy,
+                            Color(0,0,0,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                    end
+                end
+            end
+        end
+
+        draw.SimpleText(
+            text, font,
+            x, y,
+            Color(col.r or 255, col.g or 255, col.b or 255),
+            TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER
+        )
+    end
+
+    local ctrlX = 360
+    local ctrlW = 370
+
+    -----------------------------------------------------
+    -- TEXT
+    -----------------------------------------------------
+    local txt = vgui.Create("DTextEntry", frame)
+    txt:SetPos(ctrlX, 60)
+    txt:SetSize(ctrlW, 24)
+    txt:SetText(g.graffiti.text or g.name or "")
+    txt:SetUpdateOnType(true)
+    txt.OnValueChange = function(_, val)
+        val = string.sub(val or "", 1, 24)
+        g.graffiti.text = val
+        preview:InvalidateLayout(true)
+    end
+
+    -----------------------------------------------------
+    -- FONT
+    -----------------------------------------------------
+    local fontBox = vgui.Create("DComboBox", frame)
+    fontBox:SetPos(ctrlX, 90)
+    fontBox:SetSize(ctrlW, 24)
+    fontBox:SetValue(g.graffiti.font or "DubzHUD_Header")
+
+    local fonts = {}
+    for _, f in ipairs(Dubz.Config.GraffitiFonts) do
+        table.insert(fonts, f.id)
+    end
+
+    for _, f in ipairs(fonts) do
+        fontBox:AddChoice(f)
+    end
+
+    fontBox.OnSelect = function(_, _, val)
+        g.graffiti.font = val
+        g.graffiti.fontScaled = nil
+        EnsureGraffitiFont(g)
+        preview:InvalidateLayout(true)
+    end
+
+    -----------------------------------------------------
+    -- SIZE
+    -----------------------------------------------------
+    local scale = vgui.Create("DNumSlider", frame)
+    scale:SetPos(ctrlX, 118)
+    scale:SetSize(ctrlW, 26)
+    scale:SetMin(0.5)
+    scale:SetMax(3)
+    scale:SetDecimals(2)
+    scale:SetText("Graffiti Size")
+    scale:SetValue(g.graffiti.scale or 1)
+    scale.OnValueChanged = function(_, val)
+        g.graffiti.scale = val
+        g.graffiti.fontScaled = nil
+        EnsureGraffitiFont(g)
+        preview:InvalidateLayout(true)
+    end
+
+    -----------------------------------------------------
+    -- EFFECT
+    -----------------------------------------------------
+    local effectBox = vgui.Create("DComboBox", frame)
+    effectBox:SetPos(ctrlX, 146)
+    effectBox:SetSize(ctrlW, 24)
+    effectBox:SetValue(g.graffiti.effect or "Clean")
+    effectBox:AddChoice("Clean")
+    effectBox:AddChoice("Shadow")
+    effectBox:AddChoice("Outline")
+
+    local outline = vgui.Create("DNumSlider", frame)
+    outline:SetPos(ctrlX, 174)
+    outline:SetSize(ctrlW, 26)
+    outline:SetMin(1)
+    outline:SetMax(10)
+    outline:SetDecimals(0)
+    outline:SetText("Outline Thickness")
+    outline:SetValue(g.graffiti.outlineSize or 1)
+    outline.OnValueChanged = function(_, val)
+        g.graffiti.outlineSize = val
+        preview:InvalidateLayout(true)
+    end
+
+    local shadow = vgui.Create("DNumSlider", frame)
+    shadow:SetPos(ctrlX, 202)
+    shadow:SetSize(ctrlW, 26)
+    shadow:SetMin(1)
+    shadow:SetMax(10)
+    shadow:SetDecimals(0)
+    shadow:SetText("Shadow Offset")
+    shadow:SetValue(g.graffiti.shadowOffset or 2)
+    shadow.OnValueChanged = function(_, val)
+        g.graffiti.shadowOffset = val
+        preview:InvalidateLayout(true)
+    end
+
+    local function RefreshEffectVisibility()
+        local eff = g.graffiti.effect or "Clean"
+        outline:SetVisible(eff == "Outline")
+        shadow:SetVisible(eff == "Shadow")
+    end
+
+    effectBox.OnSelect = function(_,_,val)
+        g.graffiti.effect = val
+        RefreshEffectVisibility()
+        preview:InvalidateLayout(true)
+    end
+
+    RefreshEffectVisibility()
+
+    -----------------------------------------------------
+    -- BACKGROUND MATERIAL
+    -----------------------------------------------------
+    local bgBox = vgui.Create("DComboBox", frame)
+    bgBox:SetPos(ctrlX, 230)
+    bgBox:SetSize(ctrlW, 24)
+    bgBox:SetValue(g.graffiti.bgMat or "brick/brick_model")
+
+    local bgChoices = {
+        "brick/brick_model",
+        "models/debug/debugwhite",
+        "models/props/cs_assault/moneywrap03",
+        "models/props_combine/stasisshield_sheet",
+        "models/props_c17/fisheyelens"
+    }
+    for _, choice in ipairs(bgChoices) do
+        bgBox:AddChoice(choice)
+    end
+
+    bgBox.OnSelect = function(_,_,val)
+        g.graffiti.bgMat = val
+        bgMatName = val
+        preview:InvalidateLayout(true)
+    end
+
+    -----------------------------------------------------
+    -- COLORS: GANG + GRAFFITI
+    -----------------------------------------------------
+    local gangColorLabel = vgui.Create("DLabel", frame)
+    gangColorLabel:SetPos(ctrlX, 260)
+    gangColorLabel:SetSize(120, 16)
+    gangColorLabel:SetText("Gang Color")
+    gangColorLabel:SetFont("DubzHUD_Label")
+
+    local gangMixer = vgui.Create("DColorMixer", frame)
+    gangMixer:SetPos(ctrlX, 278)
+    gangMixer:SetSize(180, 90)
+    gangMixer:SetPalette(false)
+    gangMixer:SetAlphaBar(false)
+    gangMixer:SetWangs(true)
+    local gc = g.color or { r=accent.r, g=accent.g, b=accent.b }
+    gangMixer:SetColor(Color(gc.r or 255, gc.g or 255, gc.b or 255))
+
+    local graffitiLabel = vgui.Create("DLabel", frame)
+    graffitiLabel:SetPos(ctrlX + 190, 260)
+    graffitiLabel:SetSize(160, 16)
+    graffitiLabel:SetText("Graffiti Text Color")
+    graffitiLabel:SetFont("DubzHUD_Label")
+
+    local colMixer = vgui.Create("DColorMixer", frame)
+    colMixer:SetPos(ctrlX + 190, 278)
+    colMixer:SetSize(180, 90)
+    colMixer:SetPalette(false)
+    colMixer:SetAlphaBar(false)
+    colMixer:SetWangs(true)
+    colMixer:SetColor(Color(
+        g.graffiti.color.r or 255,
+        g.graffiti.color.g or 255,
+        g.graffiti.color.b or 255
+    ))
+    colMixer.ValueChanged = function(_, col)
+        g.graffiti.color = { r=col.r, g=col.g, b=col.b }
+        preview:InvalidateLayout(true)
+    end
+
+    -----------------------------------------------------
+    -- SAVE
+    -----------------------------------------------------
+    local saveBtn = vgui.Create("DButton", frame)
+    saveBtn:SetPos(20, 400)
+    saveBtn:SetSize(720, 34)
+    saveBtn:SetText("")
+    saveBtn.Paint = function(_, w2, h2)
+        draw.RoundedBox(6, 0, 0, w2, h2, accent)
+        draw.SimpleText("Save Identity", "DubzHUD_Small", w2/2, h2/2,
+            Color(255,255,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+
+    saveBtn.DoClick = function()
+        local gangCol = gangMixer:GetColor()
+        local textCol = colMixer:GetColor()
+
+        g.graffiti.color = { r=textCol.r, g=textCol.g, b=textCol.b }
+
+        -- update gang base color
+        SendAction({
+            cmd   = "setcolor",
+            color = { r=gangCol.r, g=gangCol.g, b=gangCol.b }
+        })
+
+        -- update graffiti
+        SendAction({
+            cmd          = "setgraffiti",
+            text         = g.graffiti.text or "",
+            font         = g.graffiti.font or "DubzHUD_Header",
+            scale        = g.graffiti.scale or 1,
+            effect       = g.graffiti.effect or "Clean",
+            outlineSize  = g.graffiti.outlineSize,
+            shadowOffset = g.graffiti.shadowOffset,
+            bgMat        = g.graffiti.bgMat or "brick/brick_model",
+            color        = g.graffiti.color or g.color or { r=255,g=255,b=255 }
+        })
+
+        frame:Close()
+    end
+end
+
+--------------------------------------------------------
+-- GRAFFITI PREVIEW (compact, opens editor)
 --------------------------------------------------------
 local function DrawGraffitiPreview(pnl, w, y, accent, g)
-    local bh = 160
-    Bubble(12, y, w - 24, bh)
+    local bh = 110
+    PanelFrame(12, y, w - 24, bh, accent, "top")
 
-    draw.SimpleText("Gang Graffiti", "DubzHUD_Header", 24, y + 10, accent)
+    draw.SimpleText("Gang Graffiti", "DubzHUD_Title", 24, y + 10, accent)
+    draw.SimpleText("Visual identity shown on territories & HUD.",
+        "DubzHUD_Tag", 24, y + 34, Color(190,190,190))
 
-    --------------------------------------------------------
-    -- PREVIEW PANEL
-    --------------------------------------------------------
     if not pnl._graffitiPreview then
         local preview = vgui.Create("DPanel", pnl)
-        preview:SetSize(260, 100)
+        preview:SetSize(260, 50)
         preview.Paint = function(self, pw, ph)
             local gang = GetMyGang()
             if not gang then return end
 
             local font = EnsureGraffitiFont(gang)
+            local text = (gang.graffiti and gang.graffiti.text) or gang.name or "Gang"
+            local col  = (gang.graffiti and gang.graffiti.color) or gang.color or { r=255,g=255,b=255 }
 
-            if Dubz.Graffiti and Dubz.Graffiti.Draw2D then
-                Dubz.Graffiti.Draw2D(0, 0, pw, ph, gang)
-            else
-                draw.SimpleText(
-                    gang.name or "Gang",
-                    font,
-                    pw / 2, ph / 2,
-                    Color(255,255,255),
-                    TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER
-                )
-            end
+            draw.SimpleText(
+                text,
+                font,
+                pw / 2, ph / 2,
+                Color(col.r or 255, col.g or 255, col.b or 255),
+                TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER
+            )
         end
-
         pnl._graffitiPreview = preview
         if pnl.RegisterGangElem then pnl:RegisterGangElem(preview) end
     end
 
-    pnl._graffitiPreview:SetPos(24, y + 40)
+    pnl._graffitiPreview:SetPos(24, y + 52)
 
-    --------------------------------------------------------
-    -- EDIT BUTTON (leaders only)
-    --------------------------------------------------------
+    -- Open editor button (leaders only)
     if IsLeaderC() then
         if not pnl._graffitiEdit then
             local b = vgui.Create("DButton", pnl)
             b:SetText("")
-            b:SetSize(160, 28)
-            b.Paint = function(self, pw, ph)
-                draw.RoundedBox(6, 0, 0, pw, ph, accent)
+            b:SetSize(170, 26)
+            function b:Paint(w2,h2)
+                draw.RoundedBox(6, 0, 0, w2, h2, accent)
                 draw.SimpleText(
-                    "Edit Graffiti",
+                    "Open Identity Studio",
                     "DubzHUD_Small",
-                    pw / 2, ph / 2,
+                    w2/2, h2/2,
                     Color(255,255,255),
                     TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER
                 )
             end
-
             function b:DoClick()
-                local g = GetMyGang()
-                if not g then return end
-
-                g.graffiti = g.graffiti or {}
-                g.graffiti.bgMat        = g.graffiti.bgMat        or "brick/brick_model"
-                g.graffiti.scale        = g.graffiti.scale        or 1
-                g.graffiti.outlineSize  = g.graffiti.outlineSize  or 1
-                g.graffiti.shadowOffset = g.graffiti.shadowOffset or 2
-                g.graffiti.effect       = g.graffiti.effect       or "Clean"
-                g.graffiti.color        = g.graffiti.color        or g.color or { r = 255, g = 255, b = 255 }
-
-                ---------------------------------------------------------
-                -- FRAME
-                ---------------------------------------------------------
-                local frame = vgui.Create("DFrame")
-                frame:SetTitle("")
-                frame:SetSize(600, 420)
-                frame:Center()
-                frame:MakePopup()
-                frame.Paint = function(self, w, h)
-                    draw.RoundedBox(8, 0, 0, w, h, Color(25,25,25,240))
-                    draw.SimpleText("Edit Gang Graffiti", "DubzHUD_Header", 16, 10, accent)
-                end
-
-                ---------------------------------------------------------
-                -- PREVIEW PANEL
-                ---------------------------------------------------------
-                local bgMatName = g.graffiti.bgMat or "brick/brick_model"
-
-                local preview = vgui.Create("DPanel", frame)
-                preview:SetPos(20, 40)
-                preview:SetSize(260, 200)
-                preview.Paint = function(self, pw, ph)
-                    -- BG
-                    surface.SetMaterial(Material(bgMatName, "smooth"))
-                    surface.SetDrawColor(255,255,255)
-                    surface.DrawTexturedRect(0, 0, pw, ph)
-
-                    local text  = g.graffiti.text or g.name or ""
-                    local font  = g.graffiti.fontScaled or g.graffiti.font or "Trebuchet24"
-                    local eff   = g.graffiti.effect or "Clean"
-                    local col   = g.graffiti.color or g.color or { r = 255, g = 255, b = 255 }
-
-                    local x = pw / 2
-                    local y = ph / 2
-
-                    -- EFFECTS
-                    if eff == "Shadow" then
-                        local off = g.graffiti.shadowOffset or 2
-                        draw.SimpleText(text, font, x + off, y + off,
-                            Color(0,0,0,200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-                    elseif eff == "Outline" then
-                        local thick = g.graffiti.outlineSize or 1
-                        for ox = -thick, thick do
-                            for oy = -thick, thick do
-                                if ox ~= 0 or oy ~= 0 then
-                                    draw.SimpleText(text, font, x + ox, y + oy,
-                                        Color(0,0,0,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-                                end
-                            end
-                        end
-                    end
-
-                    -- MAIN TEXT
-                    draw.SimpleText(text, font, x, y,
-                        Color(col.r, col.g, col.b),
-                        TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-                end
-
-                ---------------------------------------------------------
-                -- TEXT ENTRY
-                ---------------------------------------------------------
-                local txt = vgui.Create("DTextEntry", frame)
-                txt:SetPos(300, 40)
-                txt:SetSize(260, 24)
-                txt:SetText(g.graffiti.text or g.name or "")
-                txt.OnChange = function()
-                    g.graffiti.text = string.sub(txt:GetText(), 1, 24)
-                    preview:InvalidateLayout(true)
-                end
-
-                ---------------------------------------------------------
-                -- FONT DROPDOWN
-                ---------------------------------------------------------
-                local fontBox = vgui.Create("DComboBox", frame)
-                fontBox:SetPos(300, 70)
-                fontBox:SetSize(260, 24)
-                fontBox:SetValue(g.graffiti.font or "Trebuchet24")
-
-                local fonts = {
-                    "Trebuchet18","Trebuchet24","Trebuchet32",
-                    "DermaDefaultBold","DermaLarge",
-                    "ChatFont","BudgetLabel"
-                }
-
-                for _, f in ipairs(fonts) do
-                    fontBox:AddChoice(f)
-                end
-
-                fontBox.OnSelect = function(_,_,val)
-                g.graffiti.font = val
-                g.graffiti.fontScaled = nil
-                EnsureGraffitiFont(g)
-                preview:InvalidateLayout(true)
-                end
-
-                ---------------------------------------------------------
-                -- SIZE (FONT SCALE) SLIDER
-                ---------------------------------------------------------
-                local scale = vgui.Create("DNumSlider", frame)
-                scale:SetPos(300, 100)
-                scale:SetSize(260, 30)
-                scale:SetMin(0.5)
-                scale:SetMax(3)
-                scale:SetText("Graffiti Size")
-                scale:SetDecimals(2)
-                scale:SetValue(g.graffiti.scale or 1)
-
-                scale.OnValueChanged = function(_, val)
-                    g.graffiti.scale = val
-                    g.graffiti.fontScaled = nil
-                    EnsureGraffitiFont(g)
-                    preview:InvalidateLayout(true)
-                end
-
-                ---------------------------------------------------------
-                -- EFFECT DROPDOWN
-                ---------------------------------------------------------
-                local effectBox = vgui.Create("DComboBox", frame)
-                effectBox:SetPos(300, 135)
-                effectBox:SetSize(260, 24)
-                effectBox:SetValue(g.graffiti.effect or "Clean")
-
-                effectBox:AddChoice("Clean")
-                effectBox:AddChoice("Shadow")
-                effectBox:AddChoice("Outline")
-
-                ---------------------------------------------------------
-                -- OUTLINE SIZE (ONLY IF OUTLINE)
-                ---------------------------------------------------------
-                local outline = vgui.Create("DNumSlider", frame)
-                outline:SetPos(300, 165)
-                outline:SetSize(260, 30)
-                outline:SetMin(1)
-                outline:SetMax(10)
-                outline:SetDecimals(0)
-                outline:SetText("Outline Thickness")
-                outline:SetValue(g.graffiti.outlineSize or 1)
-
-                ---------------------------------------------------------
-                -- SHADOW OFFSET SLIDER (ONLY IF SHADOW)
-                ---------------------------------------------------------
-                local shadow = vgui.Create("DNumSlider", frame)
-                shadow:SetPos(300, 195)
-                shadow:SetSize(260, 30)
-                shadow:SetMin(1)
-                shadow:SetMax(10)
-                shadow:SetDecimals(0)
-                shadow:SetText("Shadow Offset")
-                shadow:SetValue(g.graffiti.shadowOffset or 2)
-
-                ---------------------------------------------------------
-                -- SHOW/HIDE SLIDERS BASED ON EFFECT
-                ---------------------------------------------------------
-                local function RefreshEffectVisibility()
-                    local eff = g.graffiti.effect or "Clean"
-                    outline:SetVisible(eff == "Outline")
-                    shadow:SetVisible(eff == "Shadow")
-                end
-
-                effectBox.OnSelect = function(_,_,val)
-                    g.graffiti.effect = val
-                    RefreshEffectVisibility()
-                    preview:InvalidateLayout(true)
-                end
-
-                outline.OnValueChanged = function(_, val)
-                    g.graffiti.outlineSize = val
-                    preview:InvalidateLayout(true)
-                end
-
-                shadow.OnValueChanged = function(_, val)
-                    g.graffiti.shadowOffset = val
-                    preview:InvalidateLayout(true)
-                end
-
-                RefreshEffectVisibility()
-
-                ---------------------------------------------------------
-                -- SAVE BUTTON
-                ---------------------------------------------------------
-                local bgBox = vgui.Create("DComboBox", frame)
-                bgBox:SetPos(300, 225)
-                bgBox:SetSize(260, 24)
-                bgBox:SetValue(g.graffiti.bgMat or "brick/brick_model")
-
-                local bgChoices = {
-                    "brick/brick_model",
-                    "models/debug/debugwhite",
-                    "models/props_c17/fisheyelens",
-                    "models/props/cs_assault/moneywrap03",
-                    "models/props_combine/stasisshield_sheet"
-                }
-                for _, choice in ipairs(bgChoices) do
-                    bgBox:AddChoice(choice)
-                end
-
-                bgBox.OnSelect = function(_, _, val)
-                    g.graffiti.bgMat = val
-                    bgMatName = val
-                    preview:InvalidateLayout(true)
-                end
-
-                ---------------------------------------------------------
-                -- COLOR MIXER
-                ---------------------------------------------------------
-                local colMixer = vgui.Create("DColorMixer", frame)
-                colMixer:SetPos(300, 255)
-                colMixer:SetSize(260, 100)
-                colMixer:SetPalette(true)
-                colMixer:SetAlphaBar(false)
-                colMixer:SetWangs(true)
-                colMixer:SetColor(Color(g.graffiti.color.r or 255, g.graffiti.color.g or 255, g.graffiti.color.b or 255))
-                colMixer.ValueChanged = function(_, col)
-                    g.graffiti.color = { r = col.r, g = col.g, b = col.b }
-                    preview:InvalidateLayout(true)
-                end
-
-                ---------------------------------------------------------
-                -- SAVE BUTTON
-                ---------------------------------------------------------
-                local saveBtn = vgui.Create("DButton", frame)
-                saveBtn:SetPos(20, 365)
-                saveBtn:SetSize(540, 30)
-                saveBtn:SetText("")
-                saveBtn.Paint = function(_,w,h)
-                    draw.RoundedBox(6, 0, 0, w, h, accent)
-                    draw.SimpleText(
-                        "Save Graffiti",
-                        "DubzHUD_Small",
-                        w / 2, h / 2,
-                        Color(255,255,255),
-                        TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER
-                    )
-                end
-                saveBtn.DoClick = function()
-                    net.Start("Dubz_Gang_Action")
-                    net.WriteTable({
-                        cmd          = "setgraffiti",
-                        text         = g.graffiti.text or "",
-                        font         = g.graffiti.font or "Trebuchet24",
-                        scale        = g.graffiti.scale or 1,
-                        effect       = g.graffiti.effect or "Clean",
-                        outlineSize  = g.graffiti.outlineSize,
-                        shadowOffset = g.graffiti.shadowOffset,
-                        bgMat        = g.graffiti.bgMat or "brick/brick_model",
-                        color        = g.graffiti.color or g.color or { r = 255, g = 255, b = 255 }
-                    })
-                    net.SendToServer()
-                    frame:Close()
-                end
+                OpenGraffitiEditor(accent)
             end
-
             pnl._graffitiEdit = b
             if pnl.RegisterGangElem then pnl:RegisterGangElem(b) end
         end
 
-        pnl._graffitiEdit:SetPos(300, y + 60)
+        pnl._graffitiEdit:SetPos(24 + 260 + 16, y + 60)
     end
 
     return y + bh + 12
 end
 
 --------------------------------------------------------
--- GANG OVERVIEW + COLOR PICKER + PREVIEW + SAVE BUTTON
+-- TOP OVERVIEW ROW: IDENTITY + WEALTH + STYLE
 --------------------------------------------------------
 local function DrawGangOverview(pnl, w, y, accent, g)
-    local bh = 110
-    Bubble(12, y, w - 24, bh)
+    if not g then return y end
 
-    -- Gang name
-    draw.SimpleText(g.name or "Gang", "DubzHUD_Header", 24, y + 10, accent)
+    local total = w - 24
+    local gap   = 12
+    local rowH  = 120
+    local colW  = (total - gap * 2) / 3
 
-    --------------------------------------------------------
-    -- WAR READY INDICATOR
-    --------------------------------------------------------
+    ----------------------------------------------------
+    -- Card 1: Identity
+    ----------------------------------------------------
+    local idX, idY = 12, y
+    PanelFrame(idX, idY, colW, rowH, accent, "left")
+
+    draw.SimpleText(g.name or "Gang", "DubzHUD_Title", idX + 16, idY + 10, accent)
+
+    -- War-ready tag (big & visible)
     local warReadyText  = ""
-    local warReadyColor = Color(255, 80, 80)
-
+    local warReadyColor = Color(255,80,80)
     if g.allowWars == false then
-        warReadyText  = "– NOT READY"
-        warReadyColor = Color(180,180,180)
+        warReadyText  = "NOT READY FOR WAR"
+        warReadyColor = Color(170,170,170)
     else
-        warReadyText  = "– WAR READY"
-        warReadyColor = Color(255, 60, 60)
+        warReadyText  = "WAR READY"
+        warReadyColor = Color(255,60,60)
+    end
+    draw.SimpleText(warReadyText, "DubzHUD_BodyBold", idX + 16, idY + 34, warReadyColor)
+
+    local leaderName = "Unknown"
+    if g.leaderSid64 and g.members and g.members[g.leaderSid64] then
+        leaderName = g.members[g.leaderSid64].name or leaderName
+    end
+    local memberCount = table.Count(g.members or {})
+
+    draw.SimpleText("Leader: " .. leaderName,
+        "DubzHUD_Label", idX + 16, idY + 60, Color(230,230,230))
+    draw.SimpleText("Members: " .. memberCount .. "/" .. (Dubz.Config.Gangs.MaxMembers or 12),
+        "DubzHUD_Label", idX + 16, idY + 80, Color(200,200,200))
+
+    ----------------------------------------------------
+    -- Card 2: Wealth Analytics + Bank
+    ----------------------------------------------------
+    local wx, wy = idX + colW + gap, y
+    PanelFrame(wx, wy, colW, rowH, accent, "left")
+
+    draw.SimpleText("Wealth Analytics", "DubzHUD_Title", wx + 16, wy + 10, accent)
+
+    local cleanAmt, dirtyAmt, bank = 0, 0, 0
+    bank = math.max(0, tonumber(g.bank or 0) or 0)
+
+    for sid64, _ in pairs(g.members or {}) do
+        local ply = player.GetBySteamID64(sid64)
+        if IsValid(ply) then
+            local money = (ply.getDarkRPVar and ply:getDarkRPVar("money")) or 0
+            local dirty = (ply.GetDirtyMoney and ply:GetDirtyMoney()) or 0
+            cleanAmt = cleanAmt + math.max(0, tonumber(money) or 0)
+            dirtyAmt = dirtyAmt + math.max(0, tonumber(dirty) or 0)
+        elseif g._CachedWealth and g._CachedWealth[sid64] then
+            local cached = g._CachedWealth[sid64]
+            cleanAmt = cleanAmt + math.max(0, tonumber(cached.clean) or 0)
+            dirtyAmt = dirtyAmt + math.max(0, tonumber(cached.dirty) or 0)
+        end
     end
 
-    surface.SetFont("DubzHUD_Header")
-    local nameW = surface.GetTextSize(g.name or "Gang")
+    local totalNet = bank + cleanAmt + dirtyAmt
+    local cleanPct = (totalNet > 0) and math.floor(cleanAmt / totalNet * 100) or 0
+    local dirtyPct = (totalNet > 0) and math.floor(dirtyAmt / totalNet * 100) or 0
 
-    draw.SimpleText(
-        warReadyText,
-        "DubzHUD_Header",
-        24 + nameW + 12,
-        y + 10,
-        warReadyColor
-    )
+    local fmt = DarkRP and DarkRP.formatMoney or function(v)
+        return "$" .. tostring(math.floor(v or 0))
+    end
 
-    --------------------------------------------------------
-    -- COLOR SQUARE
-    --------------------------------------------------------
-    local gc = g.color or { r = accent.r, g = accent.g, b = accent.b }
+    draw.SimpleText("Total Net Worth", "DubzHUD_Tag", wx + 16, wy + 34, Color(200,200,200))
+    draw.SimpleText(fmt(totalNet), "DubzHUD_Money", wx + 16, wy + 50, Color(255,255,255))
 
-    draw.RoundedBox(
-        6,
-        24,
-        y + 44,
-        14, 14,
-        Color(gc.r, gc.g, gc.b)
-    )
+    draw.SimpleText("Bank:  " .. fmt(bank), "DubzHUD_Label", wx + 16, wy + 80, accent)
+    draw.SimpleText("Clean: " .. fmt(cleanAmt) .. " (" .. cleanPct .. "%)",
+        "DubzHUD_Tag", wx + colW/2, wy + 52, Color(150,255,150))
+    draw.SimpleText("Dirty: " .. fmt(dirtyAmt) .. " (" .. dirtyPct .. "%)",
+        "DubzHUD_Tag", wx + colW/2, wy + 70, Color(255,150,150))
 
-    --------------------------------------------------------
-    -- LEADER / MEMBERS / BANK / DESC
-    --------------------------------------------------------
-    draw.SimpleText(
-        "Leader: " .. (g.members[g.leaderSid64] and g.members[g.leaderSid64].name or "Unknown"),
-        "DubzHUD_Small",
-        48, y + 42,
-        Color(220,220,220)
-    )
+    ----------------------------------------------------
+    -- Card 3: Style Snapshot (color swatch + editor)
+    ----------------------------------------------------
+    local sx, sy = wx + colW + gap, y
+    PanelFrame(sx, sy, colW, rowH, accent, "left")
 
-    local count = table.Count(g.members or {})
+    draw.SimpleText("Style Snapshot", "DubzHUD_Title", sx + 16, sy + 10, accent)
 
-    draw.SimpleText(
-        "Members: " .. count .. "/" .. (Dubz.Config.Gangs.MaxMembers or 12),
-        "DubzHUD_Small",
-        24, y + 66,
-        Color(220,220,220)
-    )
+    local gc = g.color or { r=accent.r, g=accent.g, b=accent.b }
+    draw.RoundedBox(6, sx + 16, sy + 40, 40, 40,
+        Color(gc.r or 255, gc.g or 255, gc.b or 255))
+    surface.SetDrawColor(0,0,0,180)
+    surface.DrawOutlinedRect(sx + 16, sy + 40, 40, 40)
 
-    draw.SimpleText(
-        "Bank: $" .. tostring(g.bank or 0),
-        "DubzHUD_Small",
-        220, y + 66,
-        Color(220,220,220)
-    )
+    draw.SimpleText("Base Color", "DubzHUD_Tag", sx + 64, sy + 44, Color(220,220,220))
+    draw.SimpleText("Open editor to tweak graffiti & color.",
+        "DubzHUD_Tag", sx + 64, sy + 64, Color(190,190,190))
 
-    draw.SimpleText(
-        "Desc: " .. (g.desc or ""),
-        "DubzHUD_Small",
-        24, y + 86,
-        Color(200,200,200)
-    )
-
-    --------------------------------------------------------
-    -- COLOR PICKER (leader only)
-    --------------------------------------------------------
     if IsLeaderC() then
-        local bubbleRight  = w - 24      -- right side padding
-        local pickerWidth  = 180
-        local pickerHeight = 90
-        local previewSize  = 36
-        local rightX       = bubbleRight - pickerWidth
-
-        -- PREVIEW BOX
-        if not pnl._colorPrev then
-            local box = vgui.Create("DPanel", pnl)
-            box:SetSize(previewSize, previewSize)
-            function box:Paint(w,h)
-                local gang = GetMyGang()
-                if not gang then return end
-                local c = gang.color or { r = 255, g = 255, b = 255 }
-                draw.RoundedBox(6, 0, 0, w, h, Color(c.r, c.g, c.b))
-            end
-            pnl._colorPrev = box
-            if pnl.RegisterGangElem then pnl:RegisterGangElem(box) end
-        end
-
-        pnl._colorPrev:SetPos(rightX - previewSize - 12, y + 10)
-
-        -- COLOR MIXER
-        if not pnl._colorMixer then
-            local cm = vgui.Create("DColorMixer", pnl)
-            cm:SetSize(pickerWidth, pickerHeight)
-            cm:SetPalette(false)
-            cm:SetAlphaBar(false)
-            cm:SetWangs(true)
-            pnl._colorMixer = cm
-            if pnl.RegisterGangElem then pnl:RegisterGangElem(cm) end
-        end
-
-        pnl._colorMixer:SetSize(pickerWidth, pickerHeight)
-        pnl._colorMixer:SetPos(rightX, y + 10)
-
-        -- APPLY BUTTON
-        if not pnl._applyColor then
+        if not pnl._styleEdit then
             local b = vgui.Create("DButton", pnl)
             b:SetText("")
-            b:SetSize(90, 22)
-            function b:Paint(w,h)
-                draw.RoundedBox(6, 0, 0, w, h, accent)
-                draw.SimpleText(
-                    "Set Color",
-                    "DubzHUD_Small",
-                    w / 2, h / 2,
-                    Color(255,255,255),
-                    TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER
-                )
+            b:SetSize(130, 24)
+            function b:Paint(w2,h2)
+                draw.RoundedBox(6, 0, 0, w2, h2, accent)
+                draw.SimpleText("Open Identity Studio", "DubzHUD_Small",
+                    w2/2, h2/2, Color(255,255,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
             end
             function b:DoClick()
-                local col = pnl._colorMixer:GetColor()
-                net.Start("Dubz_Gang_Action")
-                net.WriteTable({
-                    cmd   = "setcolor",
-                    color = { r = col.r, g = col.g, b = col.b }
-                })
-                net.SendToServer()
+                OpenGraffitiEditor(accent)
             end
-            pnl._applyColor = b
+            pnl._styleEdit = b
             if pnl.RegisterGangElem then pnl:RegisterGangElem(b) end
         end
-
-        pnl._applyColor:SetPos(
-            rightX - previewSize - 66,
-            y + 10 + previewSize + 6
-        )
+        pnl._styleEdit:SetPos(sx + colW - 16 - 130, sy + rowH - 12 - 24)
     end
 
-    return y + bh + 12
+    return y + rowH + 16
 end
 
 --------------------------------------------------------
--- RANKS
---------------------------------------------------------
-local function DrawRanks(pnl, w, y, accent, g)
-    local bh = 110
-    Bubble(12, y, w - 24, bh)
-    draw.SimpleText("Ranks", "DubzHUD_Header", 24, y + 10, accent)
-
-    local rt = g.rankTitles or Dubz.DefaultRankTitles
-    local x  = 24
-
-    for r = 3, 1, -1 do
-        draw.SimpleText(
-            string.format("%s (%d)", rt[r] or Dubz.DefaultRankTitles[r], r),
-            "DubzHUD_Body",
-            x, y + 48,
-            Color(230,230,230)
-        )
-
-        if IsLeaderC() then
-            local key = "_rank_"..r
-            if not pnl[key] then
-                local te = vgui.Create("DTextEntry", pnl)
-                if Dubz.HookTextEntry then Dubz.HookTextEntry(te) end
-                te:SetSize(160, 22)
-                te:SetPos(x, y + 70)
-                te:SetText(rt[r] or "")
-                function te:OnEnter()
-                    local txt = string.Trim(self:GetText() or "")
-                    if txt == "" then
-                        if Dubz.Notify then Dubz.Notify("Rank title cannot be empty.", "error") end
-                        return
-                    end
-                    if #txt > 32 then
-                        if Dubz.Notify then Dubz.Notify("Rank title must be 32 characters or fewer.", "error") end
-                        return
-                    end
-                    SendAction({ cmd = "setranktitle", rank = r, title = txt })
-                end
-                pnl[key] = te
-                if pnl.RegisterGangElem then pnl:RegisterGangElem(te) end
-            else
-                if IsValid(pnl[key]) then pnl[key]:SetPos(x, y + 70) end
-            end
-        end
-
-        x = x + 200
-    end
-
-    return y + bh + 12
-end
-
---------------------------------------------------------
--- MEMBERS
+-- MEMBERS (list + invite row)
 --------------------------------------------------------
 local function DrawMembers(pnl, w, y, accent, g)
-    local rowH = 34
-    local count = 0
-    for _ in pairs(g.members or {}) do count = count + 1 end
-    local bh = 56 + rowH * math.max(1, count)
+    local cardW = w - 24
+    local baseH = 72
+    local rowH  = 22
+    local count = table.Count(g.members or {})
+    local cardH = baseH + math.max(1, count) * rowH
 
-    Bubble(12, y, w - 24, bh)
-    draw.SimpleText("Members", "DubzHUD_Header", 24, y + 10, accent)
+    PanelFrame(12, y, cardW, cardH, accent, "left")
+    draw.SimpleText("Members", "DubzHUD_Title", 28, y + 10, accent)
 
     local listY = y + 40
-    local sx    = 24
+    local sx    = 28
 
-    for sid, m in pairs(g.members or {}) do
-        draw.SimpleText(m.name or sid, "DubzHUD_Body", sx, listY, Color(230,230,230))
-        draw.SimpleText(
-            Dubz.GangGetTitle(g, m.rank or 1),
-            "DubzHUD_Small",
-            sx + 260, listY + 2,
-            Color(180,180,255)
-        )
+    -- Members list
+    for sid, m in SortedPairs(g.members or {}) do
+        local name = m.name or sid
+        local title = Dubz.GangGetTitle and Dubz.GangGetTitle(g, m.rank or 1) or ("Rank "..tostring(m.rank or 1))
 
-        if IsLeaderC() and sid ~= g.leaderSid64 then
-            -- Promote
-            local pk = "_pro_"..sid
-            if not pnl[pk] then
-                local b = vgui.Create("DButton", pnl)
-                b:SetText("")
-                b:SetSize(70, 22)
-                function b:Paint(w,h)
-                    draw.RoundedBox(6, 0, 0, w, h, accent)
-                    draw.SimpleText("Promote","DubzHUD_Small",w / 2,h / 2,Color(255,255,255),1,1)
-                end
-                function b:DoClick()
-                    SendAction({ cmd = "promote", target = sid })
-                end
-                pnl[pk] = b
-                if pnl.RegisterGangElem then pnl:RegisterGangElem(b) end
-            end
-            if IsValid(pnl[pk]) then pnl[pk]:SetPos(sx + 380, listY - 4) end
-
-            -- Demote
-            local dk = "_dem_"..sid
-            if not pnl[dk] then
-                local b = vgui.Create("DButton", pnl)
-                b:SetText("")
-                b:SetSize(70, 22)
-                function b:Paint(w,h)
-                    draw.RoundedBox(6, 0, 0, w, h, Color(120,120,120))
-                    draw.SimpleText("Demote","DubzHUD_Small",w / 2,h / 2,Color(255,255,255),1,1)
-                end
-                function b:DoClick()
-                    SendAction({ cmd = "demote", target = sid })
-                end
-                pnl[dk] = b
-                if pnl.RegisterGangElem then pnl:RegisterGangElem(b) end
-            end
-            if IsValid(pnl[dk]) then pnl[dk]:SetPos(sx + 456, listY - 4) end
-
-            -- Kick
-            local kk = "_kick_"..sid
-            if not pnl[kk] then
-                local b = vgui.Create("DButton", pnl)
-                b:SetText("")
-                b:SetSize(70, 22)
-                function b:Paint(w,h)
-                    draw.RoundedBox(6, 0, 0, w, h, Color(190,80,80))
-                    draw.SimpleText("Kick","DubzHUD_Small",w / 2,h / 2,Color(255,255,255),1,1)
-                end
-                function b:DoClick()
-                    SendAction({ cmd = "kick", target = sid })
-                end
-                pnl[kk] = b
-                if pnl.RegisterGangElem then pnl:RegisterGangElem(b) end
-            end
-            if IsValid(pnl[kk]) then pnl[kk]:SetPos(sx + 532, listY - 4) end
-        end
+        draw.SimpleText(name, "DubzHUD_Body", sx, listY, Color(230,230,230))
+        draw.SimpleText(title, "DubzHUD_Tag", sx + 260, listY + 2, Color(180,180,255))
 
         listY = listY + rowH
     end
 
-    -- Invite controls (leader only)
+    -- Invite + promote/demote/kick row (leaders only)
     if IsLeaderC() then
-        -- combo = list of online players not already in gang
         if not pnl._inviteCombo then
             local combo = vgui.Create("DComboBox", pnl)
             combo:SetSize(220, 22)
@@ -917,10 +866,10 @@ local function DrawMembers(pnl, w, y, accent, g)
         if not pnl._inviteBtn then
             local bt = vgui.Create("DButton", pnl)
             bt:SetText("")
-            bt:SetSize(90, 22)
-            function bt:Paint(w,h)
-                draw.RoundedBox(6, 0, 0, w, h, accent)
-                draw.SimpleText("Invite","DubzHUD_Small",w / 2,h / 2,Color(255,255,255),1,1)
+            bt:SetSize(80, 22)
+            function bt:Paint(w2,h2)
+                draw.RoundedBox(6, 0, 0, w2, h2, accent)
+                draw.SimpleText("Invite","DubzHUD_Small",w2/2,h2/2,Color(255,255,255),TEXT_ALIGN_CENTER,TEXT_ALIGN_CENTER)
             end
             function bt:DoClick()
                 local combo = pnl._inviteCombo
@@ -939,26 +888,79 @@ local function DrawMembers(pnl, w, y, accent, g)
             if pnl.RegisterGangElem then pnl:RegisterGangElem(bt) end
         end
 
-        -- position
-        if IsValid(pnl._inviteCombo) then
-            pnl._inviteCombo:SetPos(24, y + bh - 30)
-        end
-        if IsValid(pnl._inviteBtn) then
-            pnl._inviteBtn:SetPos(250, y + bh - 30)
+        -- promote / demote / kick target (member dropdown)
+        if not pnl._memberCombo then
+            local combo = vgui.Create("DComboBox", pnl)
+            combo:SetSize(220, 22)
+            combo:SetSortItems(false)
+            pnl._memberCombo = combo
+            if pnl.RegisterGangElem then pnl:RegisterGangElem(combo) end
         end
 
-        -- Only repopulate when online player count or member count changes
+        -- buttons
+        local function MakeRoleButton(key, label, col, cmd)
+            if pnl[key] then return end
+            local b = vgui.Create("DButton", pnl)
+            b:SetText("")
+            b:SetSize(80, 22)
+            function b:Paint(w2,h2)
+                draw.RoundedBox(6, 0, 0, w2, h2, col)
+                draw.SimpleText(label, "DubzHUD_Small", w2/2, h2/2,
+                    Color(255,255,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            end
+            function b:DoClick()
+                local combo = pnl._memberCombo
+                if not IsValid(combo) then return end
+                local _, sid = combo:GetSelected()
+                if not sid or sid == "" then
+                    if Dubz.Notify then Dubz.Notify("Select a member first.", "error") end
+                    surface.PlaySound("buttons/button10.wav")
+                    return
+                end
+                SendAction({ cmd = cmd, target = sid })
+            end
+            pnl[key] = b
+            if pnl.RegisterGangElem then pnl:RegisterGangElem(b) end
+        end
+
+        MakeRoleButton("_promoteBtn", "Promote", accent, "promote")
+        MakeRoleButton("_demoteBtn",  "Demote", Color(120,120,120), "demote")
+        MakeRoleButton("_kickBtn",    "Kick",   Color(190,80,80),   "kick")
+
+        -- positions (bottom row, not blocking list)
+        local rowY = y + cardH - 30
+
         if IsValid(pnl._inviteCombo) then
-            local combo       = pnl._inviteCombo
+            pnl._inviteCombo:SetPos(28, rowY)
+        end
+        if IsValid(pnl._inviteBtn) then
+            pnl._inviteBtn:SetPos(28 + 228, rowY)
+        end
+
+        if IsValid(pnl._memberCombo) then
+            pnl._memberCombo:SetPos(28 + 228 + 96, rowY)
+        end
+        if IsValid(pnl._promoteBtn) then
+            pnl._promoteBtn:SetPos(28 + 228 + 96 + 228, rowY)
+        end
+        if IsValid(pnl._demoteBtn) then
+            pnl._demoteBtn:SetPos(28 + 228 + 96 + 228 + 86, rowY)
+        end
+        if IsValid(pnl._kickBtn) then
+            pnl._kickBtn:SetPos(28 + 228 + 96 + 228 + 86 + 86, rowY)
+        end
+
+        -- Refresh invite + member dropdowns ONLY when counts change
+        if IsValid(pnl._inviteCombo) and IsValid(pnl._memberCombo) then
             local onlineCount = #player.GetAll()
             local memberCount = table.Count(g.members or {})
 
-            if combo._lastOnlineCount ~= onlineCount
-            or combo._lastMemberCount ~= memberCount then
-
+            local hash = onlineCount * 1000 + memberCount
+            if pnl._lastInviteHash ~= hash then
+                local combo = pnl._inviteCombo
                 combo:Clear()
-                local myGang = GetMyGang() or g or {}
 
+                local myGang = GetMyGang() or g or {}
                 for _, ply in ipairs(player.GetAll()) do
                     if IsValid(ply) then
                         local sid = ply:SteamID64()
@@ -968,31 +970,102 @@ local function DrawMembers(pnl, w, y, accent, g)
                     end
                 end
 
-                combo._lastOnlineCount = onlineCount
-                combo._lastMemberCount = memberCount
+                pnl._lastInviteHash = hash
+            end
+
+            -- Member dropdown (for promote/demote/kick)
+            local hash2 = memberCount
+            if pnl._lastMemberHash ~= hash2 then
+                local mcombo = pnl._memberCombo
+                mcombo:Clear()
+                for sid, m in pairs(g.members or {}) do
+                    if sid ~= g.leaderSid64 then
+                        mcombo:AddChoice(m.name or sid, sid)
+                    end
+                end
+                pnl._lastMemberHash = hash2
             end
         end
     end
 
-    return y + bh + 12
+    return y + cardH + 12
 end
 
 --------------------------------------------------------
--- BANK
+-- RANKS
+--------------------------------------------------------
+local function DrawRanks(pnl, w, y, accent, g)
+    local cardW = w - 24
+    local cardH = 120
+    PanelFrame(12, y, cardW, cardH, accent, "left")
+
+    draw.SimpleText("Ranks", "DubzHUD_Title", 28, y + 10, accent)
+
+    local rt = g.rankTitles or Dubz.DefaultRankTitles
+    local x  = 40
+    local y2 = y + 46
+
+    for r = 3,1,-1 do
+        local title = rt[r] or Dubz.DefaultRankTitles[r] or ("Rank "..r)
+
+        draw.SimpleText(
+            string.format("%s (%d)", title, r),
+            "DubzHUD_Body",
+            x, y2,
+            Color(230,230,230)
+        )
+
+        if IsLeaderC() then
+            local key = "_rank_"..r
+            if not pnl[key] then
+                local te = vgui.Create("DTextEntry", pnl)
+                if Dubz.HookTextEntry then Dubz.HookTextEntry(te) end
+                te:SetSize(160, 22)
+                te:SetText(title)
+                function te:OnEnter()
+                    local txt = string.Trim(self:GetText() or "")
+                    if txt == "" then
+                        if Dubz.Notify then Dubz.Notify("Rank title cannot be empty.", "error") end
+                        return
+                    end
+                    if #txt > 32 then
+                        if Dubz.Notify then Dubz.Notify("Rank title must be 32 characters or fewer.", "error") end
+                        return
+                    end
+                    SendAction({ cmd = "setranktitle", rank = r, title = txt })
+                end
+                pnl[key] = te
+                if pnl.RegisterGangElem then pnl:RegisterGangElem(te) end
+            end
+            if IsValid(pnl[key]) then
+                pnl[key]:SetPos(x, y2 + 24)
+            end
+        end
+
+        x = x + 230
+    end
+
+    return y + cardH + 12
+end
+
+--------------------------------------------------------
+-- BANK (simple card, already summarized in top row)
 --------------------------------------------------------
 local function DrawMoney(pnl, w, y, accent, g)
-    local bh = 80
-    Bubble(12, y, w - 24, bh)
+    local cardW = w - 24
+    local cardH = 90
+    PanelFrame(12, y, cardW, cardH, accent, "left")
 
-    draw.SimpleText("Gang Bank", "DubzHUD_Header", 24, y + 10, accent)
+    draw.SimpleText("Gang Bank", "DubzHUD_Title", 28, y + 10, accent)
+
     draw.SimpleText(
         "Balance: $" .. tostring(g.bank or 0),
         "DubzHUD_Body",
-        24, y + 42,
+        28, y + 38,
         Color(230,230,230)
     )
 
-    -- Deposit
+    -- Deposit (everyone) & Withdraw (leaders)
     if not pnl._dep then
         local d = vgui.Create("DTextEntry", pnl)
         if Dubz.HookTextEntry then Dubz.HookTextEntry(d) end
@@ -1002,9 +1075,9 @@ local function DrawMoney(pnl, w, y, accent, g)
         local db = vgui.Create("DButton", pnl)
         db:SetText("")
         db:SetSize(90, 22)
-        function db:Paint(w,h)
-            draw.RoundedBox(6, 0, 0, w, h, accent)
-            draw.SimpleText("Deposit","DubzHUD_Small",w / 2,h / 2,Color(255,255,255),1,1)
+        function db:Paint(w2,h2)
+            draw.RoundedBox(6, 0, 0, w2, h2, accent)
+            draw.SimpleText("Deposit","DubzHUD_Small",w2/2,h2/2,Color(255,255,255),TEXT_ALIGN_CENTER,TEXT_ALIGN_CENTER)
         end
         function db:DoClick()
             local raw = pnl._dep:GetText() or ""
@@ -1038,10 +1111,9 @@ local function DrawMoney(pnl, w, y, accent, g)
         end
     end
 
-    if IsValid(pnl._dep)    then pnl._dep:SetPos(220, y + 42) end
-    if IsValid(pnl._depBtn) then pnl._depBtn:SetPos(346, y + 42) end
+    if IsValid(pnl._dep)    then pnl._dep:SetPos(220, y + 38) end
+    if IsValid(pnl._depBtn) then pnl._depBtn:SetPos(346, y + 38) end
 
-    -- Withdraw (leader only)
     if IsLeaderC() then
         if not pnl._wd then
             local d = vgui.Create("DTextEntry", pnl)
@@ -1052,9 +1124,9 @@ local function DrawMoney(pnl, w, y, accent, g)
             local db = vgui.Create("DButton", pnl)
             db:SetText("")
             db:SetSize(90, 22)
-            function db:Paint(w,h)
-                draw.RoundedBox(6, 0, 0, w, h, Color(160,160,160))
-                draw.SimpleText("Withdraw","DubzHUD_Small",w / 2,h / 2,Color(255,255,255),1,1)
+            function db:Paint(w2,h2)
+                draw.RoundedBox(6, 0, 0, w2, h2, Color(160,160,160))
+                draw.SimpleText("Withdraw","DubzHUD_Small",w2/2,h2/2,Color(255,255,255),TEXT_ALIGN_CENTER,TEXT_ALIGN_CENTER)
             end
             function db:DoClick()
                 local gang        = GetMyGang() or g or {}
@@ -1090,99 +1162,94 @@ local function DrawMoney(pnl, w, y, accent, g)
             end
         end
 
-        if IsValid(pnl._wd)    then pnl._wd:SetPos(450, y + 42) end
-        if IsValid(pnl._wdBtn) then pnl._wdBtn:SetPos(576, y + 42) end
+        if IsValid(pnl._wd)    then pnl._wd:SetPos(450, y + 38) end
+        if IsValid(pnl._wdBtn) then pnl._wdBtn:SetPos(576, y + 38) end
     end
 
-    return y + bh + 12
+    return y + cardH + 12
 end
 
 --------------------------------------------------------
 -- WARS
 --------------------------------------------------------
 local function DrawWars(pnl, w, y, accent, g)
-    local bh = 160
-    Bubble(12, y, w - 24, bh)
+    local cardW = w - 24
+    local cardH = 150
+    PanelFrame(12, y, cardW, cardH, accent, "left")
 
-    draw.SimpleText("Wars", "DubzHUD_Header", 24, y + 10, accent)
+    draw.SimpleText("Gang Wars", "DubzHUD_Title", 28, y + 10, accent)
 
-    --------------------------------------------------------
-    -- WAR STATUS
-    --------------------------------------------------------
-    local status = "Not at war"
+    local leftX  = 28
+    local rightX = 28 + cardW * 0.5
+    local yy     = y + 40
+
+    -- STATUS TEXT
+    local statusText = "Peace"
     if g.wars and g.wars.active then
-        local rem       = math.max(0, math.floor((g.wars.ends or CurTime()) - CurTime()))
+        local rem = math.max(0, math.floor((g.wars.ends or CurTime()) - CurTime()))
         local enemyName = g.wars.enemy
-
         if Dubz.Gangs[enemyName] then
             enemyName = Dubz.Gangs[enemyName].name or enemyName
         end
-
-        status = ("At war with: %s (%ds left)"):format(enemyName, rem)
+        statusText = ("At war with: %s (%ds left)"):format(enemyName, rem)
     end
+    draw.SimpleText("Status: "..statusText, "DubzHUD_Body", leftX, yy, Color(230,230,230))
+    yy = yy + 26
 
-    draw.SimpleText(status, "DubzHUD_Body", 24, y + 42, Color(230,230,230))
-
-    --------------------------------------------------------
-    -- WAR OPT-IN TOGGLE
-    --------------------------------------------------------
     if IsLeaderC() then
-        if not pnl._warToggle then
-            local cb = vgui.Create("DCheckBoxLabel", pnl)
-            cb:SetText(" Allow other gangs to declare war on us")
-            cb:SetTextColor(Color(200,200,200))
-            cb:SetFont("DubzHUD_Body")
-            function cb:OnChange(b)
-                SendAction({
-                    cmd     = "set_war_toggle",
-                    enabled = b and true or false
-                })
-            end
-            pnl._warToggle = cb
-            if pnl.RegisterGangElem then pnl:RegisterGangElem(cb) end
-        end
-
-        pnl._warToggle:SetPos(24, y + 66)
-        pnl._warToggle:SetChecked(g.allowWars ~= false)
-    end
-
-    --------------------------------------------------------
-    -- DECLARE / FORFEIT WAR UI
-    --------------------------------------------------------
-    if IsLeaderC() then
-        -- CREATE ELEMENTS
+        ------------------------------------------------
+        -- Target dropdown (enemy gang)
+        ------------------------------------------------
         if not pnl._target then
             pnl._target = vgui.Create("DComboBox", pnl)
-            pnl._target:SetSize(240, 22)
+            pnl._target:SetSize(200, 22)
+            pnl._target:SetSortItems(false)
             if pnl.RegisterGangElem then pnl:RegisterGangElem(pnl._target) end
         end
 
         if not pnl._warBtn then
             local btn = vgui.Create("DButton", pnl)
             btn:SetText("")
-            btn:SetSize(120, 22)
-            function btn:Paint(w,h)
+            btn:SetSize(100, 22)
+            function btn:Paint(w2,h2)
                 local gang = GetMyGang() or g
-                local col  = (gang.wars and gang.wars.active) and Color(190,80,80) or accent
-                draw.RoundedBox(6, 0, 0, w, h, col)
-                draw.SimpleText(
-                    (gang.wars and gang.wars.active) and "Forfeit" or "Declare",
-                    "DubzHUD_Small",
-                    w / 2, h / 2,
-                    Color(255,255,255),
-                    TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER
-                )
+                local col  = (gang.wars and gang.wars.active)
+                    and Color(190,80,80)
+                    or accent
+                local txt  = (gang.wars and gang.wars.active) and "Forfeit War" or "Declare War"
+                draw.RoundedBox(6, 0, 0, w2, h2, col)
+                draw.SimpleText(txt, "DubzHUD_Small", w2/2, h2/2,
+                    Color(255,255,255), TEXT_ALIGN_CENTER,TEXT_ALIGN_CENTER)
             end
             function btn:DoClick()
                 local gang = GetMyGang() or g
 
-                -- Already at war → forfeit
                 if gang.wars and gang.wars.active then
                     SendAction({ cmd = "forfeit_war" })
                     return
                 end
 
-                -- Declare war
+                local warsCfg      = Dubz.Config.Wars or {}
+                local minMembers   = warsCfg.MinMembers or 1
+                local declareCost  = warsCfg.DeclareCost or 0
+                local myMembers    = table.Count(gang.members or {})
+                local myMoney      = (LocalPlayer().getDarkRPVar and LocalPlayer():getDarkRPVar("money") or 0)
+
+                if myMembers < minMembers then
+                    if Dubz.Notify then Dubz.Notify("Your gang does not meet the member requirement!", "error") end
+                    return
+                end
+
+                if myMoney < declareCost then
+                    if Dubz.Notify then Dubz.Notify("You do not have enough money!", "error") end
+                    return
+                end
+
+                if gang.allowWars == false then
+                    if Dubz.Notify then Dubz.Notify("Your gang has wars disabled!", "error") end
+                    return
+                end
+
                 local _, enemyGid = pnl._target:GetSelected()
                 if not enemyGid then
                     if Dubz.Notify then Dubz.Notify("Select a gang first!", "error") end
@@ -1196,35 +1263,74 @@ local function DrawWars(pnl, w, y, accent, g)
             if pnl.RegisterGangElem then pnl:RegisterGangElem(btn) end
         end
 
-        -- POPULATE DROPDOWN SAFELY
-        local needsRefresh = false
-        local hash         = 0
+        pnl._target:SetPos(leftX, yy)
+        pnl._warBtn:SetPos(leftX + 208, yy)
 
-        for gid, gg in pairs(Dubz.Gangs or {}) do
+        yy = yy + 32
+
+        ------------------------------------------------
+        -- Opt-in checkbox (allow wars)
+        ------------------------------------------------
+        if not pnl._warToggle then
+            local cb = vgui.Create("DCheckBoxLabel", pnl)
+            cb:SetText(" Allow other gangs to declare war on us")
+            cb:SetFont("DubzHUD_Body")
+            cb:SetTextColor(Color(200,200,200))
+            function cb:OnChange(b)
+                SendAction({
+                    cmd     = "set_war_toggle",
+                    enabled = b and true or false
+                })
+            end
+            pnl._warToggle = cb
+            if pnl.RegisterGangElem then pnl:RegisterGangElem(cb) end
+        end
+
+        pnl._warToggle:SetPos(leftX, yy)
+        pnl._warToggle:SetChecked(g.allowWars ~= false)
+
+        ------------------------------------------------
+        -- Requirements (right column)
+        ------------------------------------------------
+        local warsCfg      = Dubz.Config.Wars or {}
+        local minMembers   = warsCfg.MinMembers or 1
+        local declareCost  = warsCfg.DeclareCost or 0
+        local myMembers    = table.Count(g.members or {})
+        local myMoney      = (LocalPlayer().getDarkRPVar and LocalPlayer():getDarkRPVar("money") or 0)
+
+        local reqY = y + 40
+        draw.SimpleText("Requirements", "DubzHUD_BodyBold", rightX, reqY, accent)
+        reqY = reqY + 26
+
+        local function Req(label, ok)
+            draw.SimpleText(ok and "✔" or "✘", "DubzHUD_Body", rightX, reqY,
+                ok and Color(120,255,120) or Color(255,120,120))
+            draw.SimpleText(label, "DubzHUD_Body", rightX + 22, reqY,
+                Color(230,230,230))
+            reqY = reqY + 20
+        end
+
+        Req("Members: "..myMembers.."/"..minMembers, myMembers >= minMembers)
+        Req("Cost: $"..declareCost, myMoney >= declareCost)
+        Req("Wars Enabled", g.allowWars ~= false)
+
+        -- Refresh enemy dropdown only when gang list changes
+        local hash = 0
+        for gid2, gg in pairs(Dubz.Gangs or {}) do
             hash = hash + (gg.allowWars == false and 1 or 2)
         end
-
-        if hash ~= (pnl._target._lastHash or -1) then
-            needsRefresh = true
-        end
-
-        if needsRefresh then
+        if pnl._target._lastHash ~= hash then
             pnl._target:Clear()
-
-            for gid, gg in pairs(Dubz.Gangs or {}) do
-                if gid ~= g.id and (gg.allowWars ~= false) and (g.allowWars ~= false) then
-                    pnl._target:AddChoice(gg.name, gid)
+            for gid2, gg in pairs(Dubz.Gangs or {}) do
+                if gid2 ~= g.id and (gg.allowWars ~= false) then
+                    pnl._target:AddChoice(gg.name or gid2, gid2)
                 end
             end
-
             pnl._target._lastHash = hash
         end
-
-        pnl._target:SetPos(24,  y + 96)
-        pnl._warBtn:SetPos(274, y + 96)
     end
 
-    return y + bh + 12
+    return y + cardH + 12
 end
 
 --------------------------------------------------------
@@ -1242,11 +1348,35 @@ Dubz.RegisterTab("gangs", Dubz.Config.Gangs.TabTitle or "Gangs", "users", functi
     scroll:Dock(FILL)
     scroll:DockMargin(12,12,12,12)
 
+    ---------------------------------------
+    -- Scrollbar Styling (match market)
+    ---------------------------------------
+    do
+        local sbar = scroll:GetVBar()
+
+        function sbar:Paint(w,h)
+            local bg = (Dubz.Colors and Dubz.Colors.Background) or Color(0,0,0,150)
+            surface.SetDrawColor(bg)
+            surface.DrawRect(0,0,w,h)
+        end
+
+        function sbar.btnGrip:Paint(w,h)
+            local acc = (Dubz.Colors and Dubz.Colors.Accent) or accent
+            local col = self:IsHovered()
+                and Color(acc.r + 25, acc.g + 25, acc.b + 25, 230)
+                or  Color(acc.r,      acc.g,      acc.b,      200)
+            draw.RoundedBox(6, 2, 0, w - 4, h, col)
+        end
+
+        function sbar.btnUp:Paint() end
+        function sbar.btnDown:Paint() end
+    end
+
     -- Single canvas panel inside the scroll
     local pnl = vgui.Create("DPanel", scroll)
     pnl:SetWide(scroll:GetWide())
     pnl:Dock(TOP)
-    pnl:SetTall(2000) -- big; shrinks dynamically in Paint
+    pnl:SetTall(2000) -- will be shrunk dynamically
     pnl.Paint = nil
     scroll:AddItem(pnl)
 
@@ -1271,10 +1401,13 @@ Dubz.RegisterTab("gangs", Dubz.Config.Gangs.TabTitle or "Gangs", "users", functi
         end
     end
 
-    -- MAIN PAINT LAYOUT
+    -- MAIN PAINT / LAYOUT
     function pnl:Paint(w, h)
         local g = GetMyGang()
         local y = 12
+
+        surface.SetDrawColor(12,12,12,230)
+        surface.DrawRect(0,0,w,h)
 
         if not g then
             self:SetGangVisible(false)
@@ -1298,9 +1431,9 @@ Dubz.RegisterTab("gangs", Dubz.Config.Gangs.TabTitle or "Gangs", "users", functi
                     local b = vgui.Create("DButton", self)
                     b:SetText("")
                     b:SetSize(120, 22)
-                    function b:Paint(w,h)
-                        draw.RoundedBox(6, 0, 0, w, h, Color(180,60,60))
-                        draw.SimpleText("Disband","DubzHUD_Small",w / 2,h / 2,Color(255,255,255),1,1)
+                    function b:Paint(w2,h2)
+                        draw.RoundedBox(6, 0, 0, w2, h2, Color(180,60,60))
+                        draw.SimpleText("Disband","DubzHUD_Small",w2/2,h2/2,Color(255,255,255),TEXT_ALIGN_CENTER,TEXT_ALIGN_CENTER)
                     end
                     function b:DoClick()
                         Derma_Query("Disband this gang?","Confirm",
@@ -1318,9 +1451,9 @@ Dubz.RegisterTab("gangs", Dubz.Config.Gangs.TabTitle or "Gangs", "users", functi
                     local b = vgui.Create("DButton", self)
                     b:SetText("")
                     b:SetSize(120, 22)
-                    function b:Paint(w,h)
-                        draw.RoundedBox(6, 0, 0, w, h, Color(120,120,120))
-                        draw.SimpleText("Leave","DubzHUD_Small",w / 2,h / 2,Color(255,255,255),1,1)
+                    function b:Paint(w2,h2)
+                        draw.RoundedBox(6, 0, 0, w2, h2, Color(120,120,120))
+                        draw.SimpleText("Leave","DubzHUD_Small",w2/2,h2/2,Color(255,255,255),TEXT_ALIGN_CENTER,TEXT_ALIGN_CENTER)
                     end
                     function b:DoClick()
                         Derma_Query("Leave this gang?","Confirm",
@@ -1336,8 +1469,7 @@ Dubz.RegisterTab("gangs", Dubz.Config.Gangs.TabTitle or "Gangs", "users", functi
             end
         end
 
-        -- Make panel just big enough for content instead of fixed 2000
-        self:SetTall(math.max(y + 32, parent:GetTall() + 32))
+        self:SetTall(math.max(y + 40, parent:GetTall()))
     end
 
     if not Dubz._GangTabSynced then

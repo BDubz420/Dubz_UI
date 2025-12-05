@@ -208,3 +208,131 @@ function Dubz.GetGangColor(ply)
 
     return Color(g.color.r or 255, g.color.g or 255, g.color.b or 255)
 end
+
+--------------------------------------------------------
+-- Initialize Graffiti Fonts
+--------------------------------------------------------
+
+hook.Add("Initialize", "Dubz_RegisterGraffitiFonts", function()
+
+    for _, f in ipairs(Dubz.Config.GraffitiFonts) do
+        surface.CreateFont("DubzGraff_" .. f.id .. "_Base", {
+            font = f.file,
+            size = 40,
+            weight = 900,
+            antialias = true,
+            extended = true
+        })
+    end
+
+end)
+
+--------------------------------------------------------
+-- GANG WAR HUD (GLOBAL FOR ALL GANG MEMBERS)
+--------------------------------------------------------
+
+local WarHUD_Active      = false
+local WarHUD_MyGang      = ""
+local WarHUD_Enemy       = ""
+local WarHUD_EndTime     = 0
+local WarHUD_Progress    = 0
+local WarHUD_Lerp        = 0
+
+--------------------------------------------------------
+-- WAR START
+--------------------------------------------------------
+net.Receive("Dubz_GangWar_Start", function()
+    local g1   = net.ReadString()
+    local g2   = net.ReadString()
+    local ends = net.ReadFloat()
+
+    -- Only show HUD if this player belongs to one of the gangs
+    if Dubz.MyGangId ~= g1 and Dubz.MyGangId ~= g2 then return end
+
+    WarHUD_Active  = true
+    WarHUD_MyGang  = Dubz.MyGangId
+    WarHUD_Enemy   = (Dubz.MyGangId == g1) and g2 or g1
+    WarHUD_EndTime = ends
+    WarHUD_Lerp    = 0
+end)
+
+--------------------------------------------------------
+-- WAR END (forfeit or time expired)
+--------------------------------------------------------
+net.Receive("Dubz_GangWar_End", function()
+    WarHUD_Active = false
+end)
+
+--------------------------------------------------------
+-- OPTIONAL PROGRESS UPDATES (FUTURE EXPANSION)
+--------------------------------------------------------
+net.Receive("Dubz_GangWar_Update", function()
+    WarHUD_Progress = math.Clamp(net.ReadFloat(), 0, 1)
+end)
+
+--------------------------------------------------------
+-- MAIN WAR HUD DRAW
+--------------------------------------------------------
+hook.Add("HUDPaint", "Dubz_GangWar_HUD", function()
+    if not WarHUD_Active then return end
+    if not Dubz.Gangs or not Dubz.MyGangId or Dubz.MyGangId == "" then return end
+
+    local myGang   = Dubz.Gangs[WarHUD_MyGang]
+    local enemyGang = Dubz.Gangs[WarHUD_Enemy]
+
+    if not myGang or not enemyGang then return end
+
+    -- Time remaining
+    local remaining = math.max(0, WarHUD_EndTime - CurTime())
+    if remaining <= 0 then
+        WarHUD_Active = false
+        return
+    end
+
+    local w = 450
+    local h = 58
+    local x = ScrW() / 2 - w / 2
+    local y = 90
+
+    -- Optional dynamic advantage bar using gang bank
+    local myBank    = myGang.bank or 0
+    local enemyBank = enemyGang.bank or 0
+    local total     = myBank + enemyBank
+    local ratio     = (total > 0) and (myBank / total) or 0.5
+
+    WarHUD_Lerp = Lerp(FrameTime() * 6, WarHUD_Lerp, ratio)
+
+    -------------------------------------------------------------------
+    -- Background
+    -------------------------------------------------------------------
+    draw.RoundedBox(10, x, y, w, h, Color(0, 0, 0, 185))
+
+    -------------------------------------------------------------------
+    -- Foreground Progress Bar
+    -------------------------------------------------------------------
+    local col = Color(myGang.color.r, myGang.color.g, myGang.color.b, 230)
+    draw.RoundedBox(10, x, y, w * WarHUD_Lerp, h, col)
+
+    -------------------------------------------------------------------
+    -- Labels
+    -------------------------------------------------------------------
+    local mins = math.floor(remaining / 60)
+    local secs = math.floor(remaining % 60)
+
+    draw.SimpleText(
+        "War vs " .. enemyGang.name,
+        "DubzHUD_Header",
+        ScrW() / 2, y + 12,
+        Color(255,255,255),
+        TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER
+    )
+
+    draw.SimpleText(
+        string.format("Time Left: %d:%02d", mins, secs),
+        "DubzHUD_Small",
+        ScrW() / 2, y + 35,
+        Color(230,230,230),
+        TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER
+    )
+end)
+

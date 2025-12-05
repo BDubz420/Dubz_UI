@@ -1,13 +1,6 @@
 if not Dubz then Dubz = {} end
 Dubz.Graffiti = Dubz.Graffiti or {}
 
--- Simple config you can tweak later
-Dubz.Config = Dubz.Config or {}
-Dubz.Config.Graffiti = Dubz.Config.Graffiti or {
-    MaxTextLength = 24,
-    Fonts = { "DermaLarge", "Trebuchet24", "Trebuchet18" }
-}
-
 -------------------------------------------------
 -- SHARED HELPERS
 -------------------------------------------------

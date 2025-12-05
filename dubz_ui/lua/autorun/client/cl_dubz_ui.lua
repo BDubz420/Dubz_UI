@@ -12,6 +12,28 @@ surface.CreateFont("DubzHUD_Body",   { font = "Roboto",      size = 18, weight =
 surface.CreateFont("DubzHUD_Small",  { font = "Roboto",      size = 16, weight = 400 })
 surface.CreateFont("DubzHUD_Money",  { font = "Roboto Bold", size = 24, weight = 800 })
 
+-- New AAA-style extras
+surface.CreateFont("DubzHUD_Title", {
+    font     = "Roboto Bold",
+    size     = 26,
+    weight   = 800,
+    extended = true,
+})
+
+surface.CreateFont("DubzHUD_Label", {
+    font     = "Roboto",
+    size     = 15,
+    weight   = 500,
+    extended = true,
+})
+
+surface.CreateFont("DubzHUD_Tag", {
+    font     = "Roboto",
+    size     = 13,
+    weight   = 400,
+    extended = true,
+})
+
 -- Disable default scoreboard + default DarkRP HUD
 hook.Add("ScoreboardShow", "Dubz_NoDefaultScoreboard", function() return false end)
 hook.Add("ScoreboardHide", "Dubz_NoDefaultScoreboard", function() return false end)

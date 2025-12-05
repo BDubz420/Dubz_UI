@@ -3,7 +3,7 @@ Dubz.Config = Dubz.Config or {}
 Dubz.Colors = Dubz.Colors or {}
 Dubz.Themes = Dubz.Themes or {}
 
-Dubz.Config.Version = "v0.4.6"
+Dubz.Config.Version = "v0.6.7"
 
 -- Theme / Accent
 Dubz.Colors.Accent = Color(37,150,190)
@@ -145,7 +145,7 @@ Dubz.Config.Gangs = {
         DeclareCost = 10000,         -- cost to declare war
         TributePercent = 0.10,       -- % of losing gang's bank paid to winner
         Duration = 1800,             -- war length in seconds
-        MinMembers = 3               -- minimum online members required to declare war
+        MinMembers = 1               -- minimum online members required to declare war
     },
 
     -- Dashboard integration
@@ -226,4 +226,10 @@ Dubz.Config.Territories = {
         Category = "Dubz UI",
         Name = "Gang Territory Pole"
     }
+}
+
+Dubz.Config.GraffitiFonts = {
+    { id = "StreetBold", file = "streetwars.ttf" },
+    { id = "SpraySharp", file = "spraysharp.ttf" },
+    { id = "UrbanTag",   file = "urbantag.ttf" }
 }

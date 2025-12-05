@@ -1,156 +1,79 @@
 if not Dubz then return end
 
-Dubz.Vote = Dubz.Vote or {}
+--------------------------------------------------------
+-- Dubz Vote UI (Client)
+--------------------------------------------------------
+
+Dubz.Vote        = Dubz.Vote or {}
 Dubz.Vote.Client = Dubz.Vote.Client or {}
 
-local VotePanels = {}  -- [id] = panel
-
+local VotePanels   = {}
 local PendingVotes = {}
-local FlushPendingVotes
 
-local function LayoutContainer(panel)
-    panel:SetSize(400, ScrH())
-    panel:SetPos(ScrW() - 420, 0)
+--------------------------------------------------------
+-- Helper: "[F3] Unlock Mouse" hint (Dubz style)
+--------------------------------------------------------
+local function DrawDubzHint_Centered(key, label, votePanelWidth)
+    if not votePanelWidth or votePanelWidth <= 0 then return end
+
+    local keyW, keyH = 26, 18
+    local pad        = 8
+
+    surface.SetFont("DubzHUD_Small")
+    local tw = surface.GetTextSize(label)
+    local totalW = keyW + pad + tw
+
+    local x = ScrW() - votePanelWidth - 20 + (votePanelWidth - totalW) * 0.5
+    local y = 20
+
+    local accent = Dubz.GetAccentColor and Dubz.GetAccentColor() or Color(37,150,190)
+
+    draw.RoundedBox(6, x, y, keyW, keyH, accent)
+    draw.SimpleText(
+        key,
+        "DubzHUD_Small",
+        x + keyW / 2, y + keyH / 2,
+        Color(255,255,255),
+        TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER
+    )
+
+    draw.SimpleText(
+        label,
+        "DubzHUD_Small",
+        x + keyW + pad, y + keyH / 2,
+        Color(230,230,230),
+        TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER
+    )
 end
 
-local function CanBuildContainer()
-    if not (vgui and vgui.Create and vgui.GetWorldPanel) then return false end
-    if not vgui.GetControlTable("DPanel") then return false end
-    local wp = vgui.GetWorldPanel and vgui.GetWorldPanel()
-    if not IsValid(wp) then return false end
-    return true
-end
+--------------------------------------------------------
+-- Helper: find job inside question (longest team name)
+--------------------------------------------------------
+local function SplitQuestionJob(question)
+    question = tostring(question or "")
+    if question == "" then return "", "" end
 
-local function EnsureVoteContainer()
-    if IsValid(DubzVotingContainer) then
-        return DubzVotingContainer
-    end
+    local qlower = string.lower(question)
+    local bestName, bestPos = nil, nil
 
-    if not CanBuildContainer() or not IsValid(LocalPlayer()) then
-        if not Dubz.Vote._containerRetry then
-            Dubz.Vote._containerRetry = true
-            timer.Simple(0.25, function()
-                Dubz.Vote._containerRetry = nil
-                EnsureVoteContainer()
-            end)
-        end
-        return
-    end
-
-    local root = vgui.GetWorldPanel and vgui.GetWorldPanel()
-    if not IsValid(root) then
-        timer.Simple(0.25, EnsureVoteContainer)
-        return
-    end
-
-    local ok, cont = pcall(vgui.Create, "DPanel", root)
-    if not ok or not IsValid(cont) then
-        timer.Simple(0.25, EnsureVoteContainer)
-        return
-    end
-
-    LayoutContainer(cont)
-    cont:SetMouseInputEnabled(true)
-    cont:SetKeyboardInputEnabled(false)
-    cont:SetZPos(32767)
-
-    function cont:Paint(w, h)
-        if next(VotePanels) then
-            draw.SimpleText("Press F3 to use cursor", "DubzHUD_Small", w / 2, 16,
-                Color(220, 220, 220, 220), TEXT_ALIGN_CENTER)
+    for _, t in pairs(team.GetAllTeams()) do
+        local name = t.Name
+        if name and name ~= "" then
+            local nlower = string.lower(name)
+            local pos = string.find(qlower, nlower, 1, true)
+            if pos and (not bestName or #name > #bestName) then
+                bestName = name
+                bestPos  = pos
+            end
         end
     end
 
-    hook.Add("OnScreenSizeChanged", "DubzVoteContainerLayout", function()
-        if IsValid(DubzVotingContainer) then
-            LayoutContainer(DubzVotingContainer)
-        end
-    end)
-
-    DubzVotingContainer = cont
-    if FlushPendingVotes then
-        FlushPendingVotes()
-    end
-    return cont
-end
-
-hook.Add("InitPostEntity", "DubzVoteEnsureContainer", EnsureVoteContainer)
-
-local function FlushPendingVotes()
-    if not next(PendingVotes) then return end
-    local cont = EnsureVoteContainer()
-    if not IsValid(cont) then return end
-
-    for id, data in pairs(PendingVotes) do
-        PendingVotes[id] = nil
-        Dubz.Vote.OpenPanel(data.id, data.question, data.options, data.duration, true)
-    end
-end
-
-local function EnsureVoteContainer()
-    if IsValid(DubzVotingContainer) then
-        return DubzVotingContainer
+    if not bestName or not bestPos then
+        return question, ""
     end
 
-    if not CanBuildContainer() or not IsValid(LocalPlayer()) then
-        if not Dubz.Vote._containerRetry then
-            Dubz.Vote._containerRetry = true
-            timer.Simple(0.25, function()
-                Dubz.Vote._containerRetry = nil
-                EnsureVoteContainer()
-            end)
-        end
-        return
-    end
-
-    local root = vgui.GetWorldPanel and vgui.GetWorldPanel()
-    if not IsValid(root) then
-        timer.Simple(0.25, EnsureVoteContainer)
-        return
-    end
-
-    local ok, cont = pcall(vgui.Create, "DPanel", root)
-    if not ok or not IsValid(cont) then
-        timer.Simple(0.25, EnsureVoteContainer)
-        return
-    end
-
-    LayoutContainer(cont)
-    cont:SetMouseInputEnabled(true)
-    cont:SetKeyboardInputEnabled(false)
-    cont:SetZPos(32767)
-
-    function cont:Paint(w, h)
-        if next(VotePanels) then
-            draw.SimpleText("Press F3 to use cursor", "DubzHUD_Small", w / 2, 16,
-                Color(220, 220, 220, 220), TEXT_ALIGN_CENTER)
-        end
-    end
-
-    hook.Add("OnScreenSizeChanged", "DubzVoteContainerLayout", function()
-        if IsValid(DubzVotingContainer) then
-            LayoutContainer(DubzVotingContainer)
-        end
-    end)
-
-    DubzVotingContainer = cont
-    if FlushPendingVotes then
-        FlushPendingVotes()
-    end
-    return cont
-end
-
-hook.Add("InitPostEntity", "DubzVoteEnsureContainer", EnsureVoteContainer)
-
-local function FlushPendingVotes()
-    if not next(PendingVotes) then return end
-    local cont = EnsureVoteContainer()
-    if not IsValid(cont) then return end
-
-    for id, data in pairs(PendingVotes) do
-        PendingVotes[id] = nil
-        Dubz.Vote.OpenPanel(data.id, data.question, data.options, data.duration, true)
-    end
+    local base = string.sub(question, 1, bestPos - 1)
+    return base, bestName
 end
 
 --------------------------------------------------------
@@ -164,110 +87,34 @@ local function DrawBubble(x,y,w,h,col)
     end
 end
 
--- Open a vote panel
-function Dubz.Vote.OpenPanel(id, question, options, duration, suppressQueue)
-    local container = EnsureVoteContainer()
-    if not IsValid(container) then
-        if suppressQueue then return end
-        PendingVotes[id] = {
-            id       = id,
-            question = question,
-            options  = (istable(options) and table.Copy(options)) or {},
-            duration = duration
-        }
+--------------------------------------------------------
+-- Wrapped question helpers (Option B: inline colored job)
+--------------------------------------------------------
+local function BuildQuestionSegments(question)
+    question = tostring(question or "")
+    local base, job = SplitQuestionJob(question)
 
-        if not timer.Exists("Dubz_Vote_PendingRetry") then
-            timer.Create("Dubz_Vote_PendingRetry", 0.5, 0, function()
-                if not next(PendingVotes) then
-                    timer.Remove("Dubz_Vote_PendingRetry")
-                    return
-                end
-                FlushPendingVotes()
-            end)
+    local segments = {}
+
+    local baseCol = Color(255,255,255)
+    local jobCol  = Color(255,255,255)
+
+    if job ~= "" then
+        for _, t in pairs(team.GetAllTeams()) do
+            if string.lower(t.Name) == string.lower(job) then
+                jobCol = t.Color or jobCol
+                break
+            end
         end
-        return
     end
-
-    local accent = Dubz.GetAccentColor and Dubz.GetAccentColor() or Color(40,140,200)
-
-    if IsValid(VotePanels[id]) then VotePanels[id]:Remove() end
-
-    local p = vgui.Create("DPanel", container)
-    p:SetSize(360, 190)
-    p:SetAlpha(0)
-    p.Duration = math.max(duration or 15, 1)
-    p.EndTime = CurTime() + p.Duration
-    p.Closing = false
-    p.Id = id
-
-    local parentW = container:GetWide()
-    local offsetY = 50 + (#container:GetChildren() - 1) * 12
 
     for w in string.gmatch(base or "", "%S+") do
         table.insert(segments, { text = w, col = baseCol })
     end
 
-    function p:SlideOut()
-        if self.Closing then return end
-        self.Closing = true
-        local x, y = self:GetPos()
-        self:MoveTo(parentW, y, 0.25, 0, 0.2)
-        self:AlphaTo(0, 0.2, 0, function()
-            if IsValid(self) then self:Remove() end
-        end)
-    end
-
-    function p:OnRemove()
-        if VotePanels[self.Id] == self then
-            VotePanels[self.Id] = nil
-        end
-    end
-
-    function p:OnRemove()
-        if VotePanels[self.Id] == self then
-            VotePanels[self.Id] = nil
-        end
-    end
-
-    function p:OnRemove()
-        if VotePanels[self.Id] == self then
-            VotePanels[self.Id] = nil
-        end
-    end
-
-    function p:OnRemove()
-        if VotePanels[self.Id] == self then
-            VotePanels[self.Id] = nil
-        end
-    end
-
-    function p:OnRemove()
-        if VotePanels[self.Id] == self then
-            VotePanels[self.Id] = nil
-        end
-    end
-
-    function p:OnRemove()
-        if VotePanels[self.Id] == self then
-            VotePanels[self.Id] = nil
-        end
-    end
-
-    function p:OnRemove()
-        if VotePanels[self.Id] == self then
-            VotePanels[self.Id] = nil
-        end
-    end
-
-    function p:OnRemove()
-        if VotePanels[self.Id] == self then
-            VotePanels[self.Id] = nil
-        end
-    end
-
-    function p:OnRemove()
-        if VotePanels[self.Id] == self then
-            VotePanels[self.Id] = nil
+    if job ~= "" then
+        for w in string.gmatch(job or "", "%S+") do
+            table.insert(segments, { text = w, col = jobCol })
         end
     end
 
@@ -411,12 +258,6 @@ function Dubz.Vote.OpenPanel(id, question, options, duration, suppressQueue)
 
     local lp = LocalPlayer()
     if not IsValid(lp) then return end
-
-    local localName   = lp:Nick()
-    local isInitiator = string.StartWith(question, localName)
-
-    -- Initiator does NOT see the vote UI box
-    if isInitiator then return end
 
     local parent = GetVoteParent()
     if not IsValid(parent) then
@@ -599,39 +440,95 @@ net.Receive("Dubz_Vote_Start", function()
 
     local duration = net.ReadUInt(8)
 
+    local lp = LocalPlayer()
+    if not IsValid(lp) then return end
+
+    local localName = lp:Nick()
+    local base, job = SplitQuestionJob(question)
+
+    if DarkRP and DarkRP.notify then
+        if string.StartWith(question, localName) then
+            if job ~= "" then
+                DarkRP.notify(lp, 0, 5, "You started a vote to become " .. job)
+            else
+                DarkRP.notify(lp, 0, 5, "You started a vote.")
+            end
+        else
+            local msg = string.Trim((base or "") .. (job or ""))
+            DarkRP.notify(lp, 0, 5, msg)
+        end
+    end
+
     Dubz.Vote.OpenPanel(id, question, options, duration)
 end)
 
--- Receive end from server
+--------------------------------------------------------
+-- DarkRP notifications for vote end
+--------------------------------------------------------
 net.Receive("Dubz_Vote_End", function()
-    local id = net.ReadString()
-    local count = net.ReadUInt(8)
+    local id      = net.ReadString()
+    local count   = net.ReadUInt(8)
     local results = {}
+
     for i = 1, count do
         results[i] = net.ReadUInt(12)
     end
-    local winner = net.ReadUInt(8)
+
+    local winner    = net.ReadUInt(8)
     local cancelled = net.ReadBool()
 
-    local pnl = VotePanels[id]
-    if IsValid(pnl) then
-        pnl:SlideOut()
-    end
+    local pnl      = VotePanels[id]
+    local question = pnl and pnl.Question or ""
+    local lp       = LocalPlayer()
+    if IsValid(pnl) then pnl:SlideOut() end
+    if not IsValid(lp) then return end
 
-    -- Optional: show result as notification
-    if notification and notification.AddLegacy then
-        local txt
+    local localName = lp:Nick()
+    local base, job = SplitQuestionJob(question)
+
+    if not (DarkRP and DarkRP.notify) then return end
+
+    if string.StartWith(question, localName) then
         if cancelled then
-            txt = string.format("Vote '%s' was cancelled.", id)
-        elseif winner > 0 then
-            txt = string.format("Vote '%s' finished. Option #%d won with %d votes.",
-                id, winner, results[winner] or 0)
+            if job ~= "" then
+                DarkRP.notify(lp, 1, 4, "The vote for " .. job .. " was cancelled.")
+            else
+                DarkRP.notify(lp, 1, 4, "The vote was cancelled.")
+            end
+        elseif winner == 1 then
+            if job ~= "" then
+                DarkRP.notify(lp, 0, 4, "You have been made " .. job .. "!")
+            else
+                DarkRP.notify(lp, 0, 4, "You won the vote.")
+            end
         else
-            txt = string.format("Vote '%s' ended with no winner.", id)
-        end
-
-        if txt then
-            notification.AddLegacy(txt, cancelled and 1 or 0, 5)
+            if job ~= "" then
+                DarkRP.notify(lp, 1, 4, "You have not been made " .. job .. ".")
+            else
+                DarkRP.notify(lp, 1, 4, "You did not win the vote.")
+            end
         end
     end
+end)
+
+--------------------------------------------------------
+-- Cast vote
+--------------------------------------------------------
+function Dubz.Vote.Cast(id, choice)
+    net.Start("Dubz_Vote_Cast")
+        net.WriteString(id)
+        net.WriteUInt(choice, 8)
+    net.SendToServer()
+end
+
+--------------------------------------------------------
+-- Dev test command
+--------------------------------------------------------
+concommand.Add("dubz_vote_test_cl", function()
+    Dubz.Vote.OpenPanel(
+        "cltest_" .. CurTime(),
+        "Client Test Vote for a very long role name that should wrap correctly when it gets too big",
+        { "Yes", "No" },
+        15
+    )
 end)

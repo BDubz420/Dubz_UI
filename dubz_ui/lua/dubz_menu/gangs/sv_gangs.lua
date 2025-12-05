@@ -1,6 +1,10 @@
 AddCSLuaFile("dubz_menu/gangs/sh_gangs.lua")
 include("dubz_menu/gangs/sh_gangs.lua")
 
+util.AddNetworkString("Dubz_GangWar_Start")
+util.AddNetworkString("Dubz_GangWar_Update")
+util.AddNetworkString("Dubz_GangWar_End")
+
 local CFG = Dubz.Config and Dubz.Config.Gangs or {}
 
 local DATA_DIR = "dubz_ui"
@@ -39,6 +43,14 @@ local function NormalizeTerritory(id, terr)
     data.pos = normalizeVec(terr.pos or terr.position or {})
     data.ang = normalizeAng(terr.ang or terr.angles or {})
     return data
+end
+
+local function GangNotify(ply, msgType, length, msg)
+    if DarkRP and DarkRP.notify then
+        DarkRP.notify(ply, msgType, length, msg)
+    else
+        ply:ChatPrint(msg)
+    end
 end
 
 -- Data normalizers ---------------------------------------------------
@@ -228,7 +240,7 @@ local function RefreshGangNWForAll()
     end
 end
 
-local function SaveGangs()
+function SaveGangs()
     if not istable(Dubz.Gangs) then
         Dubz.Gangs = {}
     end
@@ -264,7 +276,7 @@ local function ExtractGangTable(tbl)
 end
 
 -- FIXED LoadGangs (ensures graffiti exists BEFORE any sync happens)
-local function LoadGangs()
+function LoadGangs()
     if file.Exists(DATA_FILE, "DATA") then
         local raw = file.Read(DATA_FILE, "DATA") or "{}"
         local ok, decoded = pcall(util.JSONToTable, raw)
@@ -283,7 +295,6 @@ local function LoadGangs()
         if not SanitizeGang(gid, g) then
             Dubz.Gangs[gid] = nil
         else
-            -- runtime-only state should be cleared on boot
             g.territories = {}
             g.wars = {}
             print(string.format("[Dubz Gangs] Loaded gang %-20s members=%d bank=%s", gid, table.Count(g.members or {}), tostring(g.bank or 0)))
@@ -292,8 +303,11 @@ local function LoadGangs()
 
     RebuildGangByMember()
     RefreshGangNWForAll()
-    print(string.format("[Dubz Gangs] Finished load, %d gangs active", table.Count(Dubz.Gangs)))
+
+    print(string.format("[Dubz Gangs] Finished load, %d gangs active",
+        table.Count(Dubz.Gangs)))
 end
+
 hook.Add("Initialize","Dubz_Gangs_Load_Fixed", function()
     timer.Simple(1, function()
         LoadGangs()
@@ -303,7 +317,7 @@ end)
 
 
 -- Sync helpers
-local function SendFullSync(ply)
+function SendFullSync(ply)
     if not IsValid(ply) then return end
 
     -- Make a CLEAN COPY of the gangs table
@@ -354,7 +368,7 @@ local function SendFullSync(ply)
     net.Send(ply)
 end
 
-local function BroadcastUpdate(gid)
+function BroadcastUpdate(gid)
     if Dubz.Gangs[gid] then
         NormalizeGraffiti(Dubz.Gangs[gid])
     end
@@ -433,12 +447,86 @@ end)
 -- update dashboard richest gangs (keeps your dashboard in sync)
 local function RebuildRichestGangs()
     Dubz.RichestGangs = {}
-    for gid, g in pairs(Dubz.Gangs) do
-        Dubz.RichestGangs[g.name or gid] = math.floor(tonumber(g.bank or 0) or 0)
+    for gid, g in pairs(Dubz.Gangs or {}) do
+        Dubz.RichestGangs[g.name or gid] = math.max(0, tonumber(g.networth) or 0)
     end
 end
-_G.RebuildRichestGangs = RebuildRichestGangs
+
 Dubz.RebuildRichestGangs = RebuildRichestGangs
+_G.RebuildRichestGangs = RebuildRichestGangs
+
+----------------------------------------------------------------------
+-- GANG WEALTH CALCULATOR (ONLINE + OFFLINE + BANK)
+----------------------------------------------------------------------
+
+local function ComputeGangWealth(gid, g)
+    if not g then return end
+
+    local clean = 0
+    local dirty = 0
+
+    ------------------------------------------------------
+    -- ONLINE MEMBERS — LIVE MONEY
+    ------------------------------------------------------
+    for sid64, m in pairs(g.members or {}) do
+        for _, ply in ipairs(player.GetAll()) do
+            if IsValid(ply) and ply:SteamID64() == sid64 then
+                clean = clean + math.max(0, (ply.getDarkRPVar and ply:getDarkRPVar("money")) or 0)
+                if ply.GetDirtyMoney then
+                    dirty = dirty + math.max(0, ply:GetDirtyMoney())
+                end
+            end
+        end
+    end
+
+    ------------------------------------------------------
+    -- OFFLINE MEMBERS — CACHED SNAPSHOT
+    ------------------------------------------------------
+    if g._CachedWealth then
+        for sid64, dat in pairs(g._CachedWealth) do
+            local online = false
+            for _, ply in ipairs(player.GetAll()) do
+                if IsValid(ply) and ply:SteamID64() == sid64 then
+                    online = true
+                    break
+                end
+            end
+
+            if not online then
+                clean = clean + math.max(0, tonumber(dat.clean) or 0)
+                dirty = dirty + math.max(0, tonumber(dat.dirty) or 0)
+            end
+        end
+    end
+
+    ------------------------------------------------------
+    -- BANK
+    ------------------------------------------------------
+    local bank = math.max(0, tonumber(g.bank) or 0)
+
+    ------------------------------------------------------
+    -- FINAL VALUES
+    ------------------------------------------------------
+    g.cleanMoney = clean
+    g.dirtyMoney = dirty
+    g.networth   = clean + dirty + bank
+end
+
+
+-- Recompute for all gangs
+function Dubz.RecomputeAllGangWealth()
+    for gid, g in pairs(Dubz.Gangs or {}) do
+        ComputeGangWealth(gid, g)
+    end
+end
+
+-- Auto refresh every 30s
+timer.Create("Dubz_GangWealth_Ticker", 30, 0, function()
+    Dubz.RecomputeAllGangWealth()
+    for gid, g in pairs(Dubz.Gangs or {}) do
+        BroadcastUpdate(gid)
+    end
+end)
 
 local function FullResync(ply)
     if not IsValid(ply) then return end
@@ -664,7 +752,10 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         local desc = string.sub(tostring(act.desc or ""), 1, descMax)
 
         -- Money check
-        if not CanAfford(ply, CFG.StartCost or 0) then return end
+        if not CanAfford(ply, CFG.StartCost or 0) then
+            GangNotify(ply, 1, 5, "You cannot afford to create a gang.")
+            return
+        end
         TakeMoney(ply, CFG.StartCost or 0)
 
         local gid = NewGangId()
@@ -688,21 +779,17 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
                 }
             },
 
-            -- No active war initially (runtime-only)
             wars = {
                 active = false,
                 enemy  = nil
             },
 
-            -- NEW FIELD (default TRUE)
             allowWars = true
         }
 
-        if Dubz.Log then
-            Dubz.Log(string.format("%s created gang '%s'", ply:Nick(), Dubz.Gangs[gid].name or gid), "INFO", "GANG")
-        end
-
         Dubz.GangByMember[sid] = gid
+
+        GangNotify(ply, 0, 4, "Gang created successfully!")
 
         SaveGangs()
         RebuildRichestGangs()
@@ -715,24 +802,23 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
 
     -- LEAVE
     if act.cmd == "leave" and gid then
-        local g = Dubz.Gangs[gid]; if not g then return end
+        local g = Dubz.Gangs[gid]
+        if not g then return end
 
-        -- Remove this player from the gang first
         if g.members then
             g.members[sid] = nil
         end
+
         Dubz.GangByMember[sid] = nil
 
-        -- Count remaining members
         local remaining = 0
         for _ in pairs(g.members or {}) do
             remaining = remaining + 1
         end
 
         if remaining == 0 then
-            -- No one left in the gang -> delete it
             Dubz.Gangs[gid] = nil
-            for m, _ in pairs(Dubz.GangByMember) do
+            for m,_ in pairs(Dubz.GangByMember) do
                 if Dubz.GangByMember[m] == gid then
                     Dubz.GangByMember[m] = nil
                 end
@@ -746,13 +832,15 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
                 net.WriteTable({})
             net.Broadcast()
 
-            print("[Dubz Gangs] Gang " .. tostring(gid) .. " removed (last member left).")
+            GangNotify(ply, 3, 5, "You left the gang. The gang has been disbanded.")
             return
         end
 
-        -- If the leaving player was the leader, promote a new one
         if g.leaderSid64 == sid then
             PromoteNewLeader(gid)
+            GangNotify(ply, 2, 5, "You left your gang. A new leader has been chosen.")
+        else
+            GangNotify(ply, 0, 4, "You left your gang.")
         end
 
         SaveGangs()
@@ -762,7 +850,6 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
 
         return
     end
-
     -- TOGGLE GANG WARS
     if act.cmd == "set_war_toggle" and gid and IsLeader(ply, gid) then
         local g = Dubz.Gangs[gid]
@@ -780,98 +867,161 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
 
     -- DISBAND (leader)
     if act.cmd == "disband" and gid and IsLeader(ply, gid) then
+
+        hook.Run("Dubz_Gang_Disbanded", gid)
+
         Dubz.Gangs[gid] = nil
-        for m,_ in pairs(Dubz.GangByMember) do if Dubz.GangByMember[m] == gid then Dubz.GangByMember[m] = nil end end
-        SaveGangs(); RebuildRichestGangs()
-        net.Start("Dubz_Gang_Update") net.WriteString(gid) net.WriteTable({}) net.Broadcast()
-        if Dubz.Log then
-            Dubz.Log(string.format("%s disbanded gang '%s'", ply:Nick(), gid), "WARN", "GANG")
+
+        for m,_ in pairs(Dubz.GangByMember) do
+            if Dubz.GangByMember[m] == gid then
+                Dubz.GangByMember[m] = nil
+            end
         end
+
+        SaveGangs()
+        RebuildRichestGangs()
+
+        net.Start("Dubz_Gang_Update")
+            net.WriteString(gid)
+            net.WriteTable({})
+        net.Broadcast()
+
+        GangNotify(ply, 3, 5, "You disbanded your gang.")
+
         return
     end
 
-    -- INVITE (leader only as requested / or officer if config says so)
+    -- INVITE
     if act.cmd == "invite" and gid and CanInvite(ply, gid) then
         local target = act.target and player.GetBySteamID64(tostring(act.target)) or nil
-        if not IsValid(target) then return end
+        if not IsValid(target) then
+            GangNotify(ply, 1, 4, "Invalid target.")
+            return
+        end
+
         local g = Dubz.Gangs[gid]
         local max = CFG.MaxMembers or 12
-        local count = 0; for _ in pairs(g.members or {}) do count = count + 1 end
-        if count >= max then return end
+        local count = 0
+        for _ in pairs(g.members or {}) do count = count + 1 end
+        if count >= max then
+            GangNotify(ply, 1, 5, "Your gang is full.")
+            return
+        end
+
         SendInvite(target, ply, gid)
+
+        GangNotify(ply, 0, 4, "Invite sent!")
+
         return
     end
 
-    -- ACCEPT / DECLINE invite
     if act.cmd == "accept_invite" then
-        local inv = PendingInvites[sid]; if not inv or inv.expire < CurTime() then PendingInvites[sid]=nil return end
-        if Dubz.GangByMember[sid] then PendingInvites[sid]=nil return end
-        local g = Dubz.Gangs[inv.gid]; if not g then PendingInvites[sid]=nil return end
+        local inv = PendingInvites[sid]
+        if not inv or inv.expire < CurTime() then
+            PendingInvites[sid] = nil
+            return
+        end
+
+        if Dubz.GangByMember[sid] then
+            PendingInvites[sid] = nil
+            return
+        end
+
+        local g = Dubz.Gangs[inv.gid]
+        if not g then
+            PendingInvites[sid] = nil
+            return
+        end
+
         local max = CFG.MaxMembers or 12
-        local count = 0; for _ in pairs(g.members or {}) do count = count + 1 end
-        if count >= max then PendingInvites[sid]=nil return end
-        g.members[sid] = {name=ply:Nick(), rank=Dubz.GangRanks.Member, joined=os.time()}
+        local count = 0
+        for _ in pairs(g.members or {}) do count = count + 1 end
+        if count >= max then
+            PendingInvites[sid] = nil
+            return
+        end
+
+        g.members[sid] = { name = ply:Nick(), rank = Dubz.GangRanks.Member, joined = os.time() }
         Dubz.GangByMember[sid] = inv.gid
         PendingInvites[sid] = nil
-        SaveGangs(); RebuildRichestGangs()
+
+        SaveGangs()
+        RebuildRichestGangs()
         BroadcastUpdate(inv.gid)
         SendFullSync(ply)
-        BroadcastGangBanner(inv.gid, ply:Nick() .. " joined " .. (g.name or "your gang"), Color(120,200,120))
+
+        GangNotify(ply, 0, 4, "You joined the gang!")
+
         return
     end
     if act.cmd == "decline_invite" then
         PendingInvites[sid] = nil
+        GangNotify(ply, 0, 4, "You turned down the gang invite.")
         return
     end
 
-    -- PROMOTE/DEMOTE/KICK (leader only)
     if (act.cmd == "promote" or act.cmd == "demote" or act.cmd == "kick") and gid and IsLeader(ply, gid) then
         local targetSid = Dubz.GetSID64(act.target or "")
-        local g = Dubz.Gangs[gid]; if not g or not targetSid or not g.members or not g.members[targetSid] then return end
+        local g = Dubz.Gangs[gid]
+        if not g or not targetSid or not g.members or not g.members[targetSid] then return end
         if targetSid == sid then return end
+
         if act.cmd == "kick" then
             local kickedName = g.members[targetSid] and g.members[targetSid].name or "A member"
             g.members[targetSid] = nil
             Dubz.GangByMember[targetSid] = nil
             BroadcastGangBanner(gid, kickedName .. " was removed", Color(255,120,120))
+
+            GangNotify(ply, 1, 4, "Member removed from the gang.")
         else
             local cur = g.members[targetSid].rank or 1
             if act.cmd == "promote" then
-                g.members[targetSid].rank = math.Clamp(cur + 1, 1, Dubz.GangRanks.Leader - 1) -- cannot promote to Leader
+                g.members[targetSid].rank = math.Clamp(cur + 1, 1, Dubz.GangRanks.Leader - 1)
+                GangNotify(ply, 0, 4, "Member promoted.")
             else
                 g.members[targetSid].rank = math.Clamp(cur - 1, 1, Dubz.GangRanks.Leader - 1)
+                GangNotify(ply, 0, 4, "Member demoted.")
             end
         end
-        SaveGangs(); BroadcastUpdate(gid)
+
+        SaveGangs()
+        BroadcastUpdate(gid)
         return
     end
 
-    -- RANK TITLE EDIT (leader)
     if act.cmd == "setranktitle" and gid and IsLeader(ply, gid) then
         local r = tonumber(act.rank or 0) or 0
         local titleMax = CFG.RankTitleMaxLength or 20
         local title = string.sub(tostring(act.title or ""), 1, titleMax)
         local g = Dubz.Gangs[gid]; if not g then return end
+
         g.rankTitles = g.rankTitles or table.Copy(Dubz.DefaultRankTitles)
+
         if r >= 1 and r <= 3 and title ~= "" then
             g.rankTitles[r] = title
-            SaveGangs(); BroadcastUpdate(gid)
+
+            SaveGangs()
+            BroadcastUpdate(gid)
+
+            GangNotify(ply, 0, 4, "Rank title updated.")
+
         end
         return
     end
 
-    -- DESC (leader only)
     if act.cmd == "setdesc" and gid and IsLeader(ply, gid) then
         local g = Dubz.Gangs[gid]; if not g then return end
 
         local descMax = CFG.DescMaxLength or 160
         local newDesc = tostring(act.desc or ""):Trim()
 
-        -- Enforce limit
         g.desc = string.sub(newDesc, 1, descMax)
 
         SaveGangs()
         BroadcastUpdate(gid)
+
+        GangNotify(ply, 0, 4, "Gang description updated.")
+
         return
     end
 
@@ -880,28 +1030,21 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         local g = Dubz.Gangs[gid]; if not g then return end
 
         local c = act.color or {}
-        local r = tonumber(c.r) or 200
-        local gVal = tonumber(c.g) or 200
-        local b = tonumber(c.b) or 200
+        local r = math.Clamp(tonumber(c.r) or 200, 0, 255)
+        local gVal = math.Clamp(tonumber(c.g) or 200, 0, 255)
+        local b = math.Clamp(tonumber(c.b) or 200, 0, 255)
 
-        -- Clamp values to safe ranges
-        r = math.Clamp(r, 0, 255)
-        gVal = math.Clamp(gVal, 0, 255)
-        b = math.Clamp(b, 0, 255)
+        g.color = { r = r, g = gVal, b = b }
 
-        g.color = {
-            r = r,
-            g = gVal,
-            b = b
-        }
-
-        -- ALSO update graffiti color instantly (if your graffiti system uses g.color)
         if g.graffiti then
             g.graffiti.color = { r = r, g = gVal, b = b }
         end
 
         SaveGangs()
         BroadcastUpdate(gid)
+
+        GangNotify(ply, 0, 4, "Gang color updated.")
+
         return
     end
 
@@ -909,33 +1052,50 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
     if CFG.BankEnabled and gid then
         if act.cmd == "deposit" and (CFG.AllowDeposit ~= false) then
             local amt = math.max(0, math.floor(tonumber(act.amount or 0) or 0))
-            if amt <= 0 or not CanAfford(ply, amt) then return end
-            TakeMoney(ply, amt)
-            local g = Dubz.Gangs[gid]; g.bank = math.max(0, (g.bank or 0) + amt)
-            SaveGangs(); RebuildRichestGangs(); BroadcastUpdate(gid)
-            if Dubz.Log then
-                Dubz.Log(string.format("%s deposited %s into %s", ply:Nick(), tostring(amt), g.name or gid), "INFO", "GANG")
+            if amt <= 0 or not CanAfford(ply, amt) then
+                GangNotify(ply, 1, 4, "Invalid deposit amount.")
+                return
             end
+
+            TakeMoney(ply, amt)
+            local g = Dubz.Gangs[gid]
+            g.bank = math.max(0, (g.bank or 0) + amt)
+
+            SaveGangs()
+            RebuildRichestGangs()
+            BroadcastUpdate(gid)
+
+            GangNotify(ply, 0, 4, "Deposited $" .. amt .. " into gang bank.")
+
             return
         end
+
         if act.cmd == "withdraw" and CanWithdrawFromBank(ply, gid) then
             local amt = math.max(0, math.floor(tonumber(act.amount or 0) or 0))
-            local g = Dubz.Gangs[gid]; if amt <= 0 or (g.bank or 0) < amt then return end
+            local g = Dubz.Gangs[gid]
+            if amt <= 0 or (g.bank or 0) < amt then
+                GangNotify(ply, 1, 4, "Invalid withdraw amount.")
+                return
+            end
+
             g.bank = (g.bank or 0) - amt
             AddMoney(ply, amt)
-            SaveGangs(); RebuildRichestGangs(); BroadcastUpdate(gid)
-            if Dubz.Log then
-                Dubz.Log(string.format("%s withdrew %s from %s", ply:Nick(), tostring(amt), g.name or gid), "WARN", "GANG")
-            end
+
+            SaveGangs()
+            RebuildRichestGangs()
+            BroadcastUpdate(gid)
+
+            GangNotify(ply, 0, 4, "Withdrew $" .. amt .. " from gang bank.")
+
             return
         end
     end
 
-    --------------------------------------------------
+    -------------------------------------------------
     -- GRAFFITI TEXT (leader)
     --------------------------------------------------
     if act.cmd == "setgraffiti" and gid and IsLeader(ply, gid) then
-        local g = Dubz.Gangs[gid]; 
+        local g = Dubz.Gangs[gid]
         if not g then return end
 
         g.graffiti = g.graffiti or {}
@@ -950,14 +1110,14 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         g.graffiti.text = txt
 
         --------------------------------------------------
-        -- FONT (base font name)
+        -- FONT
         --------------------------------------------------
         if act.font and act.font ~= "" then
             g.graffiti.font = tostring(act.font)
         end
 
         --------------------------------------------------
-        -- FONT SCALE + SCALED FONT NAME
+        -- SCALE + SCALED FONT NAME
         --------------------------------------------------
         if act.scale then
             g.graffiti.scale = tonumber(act.scale) or 1
@@ -966,12 +1126,11 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         if act.fontScaled and act.fontScaled ~= "" then
             g.graffiti.fontScaled = tostring(act.fontScaled)
         else
-            -- fallback: auto-generate name
             g.graffiti.fontScaled = "DubzGraffiti_Font_" .. math.floor((g.graffiti.scale or 1) * 100)
         end
 
         --------------------------------------------------
-        -- EFFECT (shadow, outline, etc.)
+        -- EFFECT
         --------------------------------------------------
         if act.effect then
             g.graffiti.effect = tostring(act.effect)
@@ -985,7 +1144,7 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         end
 
         --------------------------------------------------
-        -- CUSTOM COLOR (optional)
+        -- CUSTOM COLOR
         --------------------------------------------------
         if istable(act.color) then
             g.graffiti.color = {
@@ -1006,6 +1165,9 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         --------------------------------------------------
         SaveGangs()
         BroadcastUpdate(gid)
+
+        GangNotify(ply, 0, 4, "Graffiti updated successfully.")
+
         return
     end
 
@@ -1013,12 +1175,26 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
     if CFG.Wars and CFG.Wars.Enabled then
         if act.cmd == "declare_war" and gid and IsLeader(ply, gid) then
             local enemy = tostring(act.enemy or "")
-            if not Dubz.Gangs[enemy] or enemy == gid then return end
+            if not Dubz.Gangs[enemy] or enemy == gid then
+                GangNotify(ply, 1, 5, "Invalid enemy gang.")
+                return
+            end
+
             local g = Dubz.Gangs[gid]
-            -- checks
-            local members = 0 for _ in pairs(g.members or {}) do members = members + 1 end
-            if members < (CFG.Wars.MinMembers or 3) then return end
-            if not CanAfford(ply, CFG.Wars.DeclareCost or 0) then return end
+
+            -- Checks
+            local members = 0
+            for _ in pairs(g.members or {}) do members = members + 1 end
+            if members < (CFG.Wars.MinMembers or 3) then
+                GangNotify(ply, 1, 5, "Your gang does not meet minimum member requirement.")
+                return
+            end
+
+            if not CanAfford(ply, CFG.Wars.DeclareCost or 0) then
+                GangNotify(ply, 1, 5, "You cannot afford to start a gang war.")
+                return
+            end
+
             TakeMoney(ply, CFG.Wars.DeclareCost or 0)
 
             g.wars = g.wars or {}
@@ -1027,13 +1203,26 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
             g.wars.started = CurTime()
             g.wars.ends = CurTime() + (CFG.Wars.Duration or 1800)
 
-            local e = Dubz.Gangs[enemy]; e.wars = e.wars or {}
+            local e = Dubz.Gangs[enemy]
+            e.wars = e.wars or {}
             e.wars.active = true
             e.wars.enemy = gid
             e.wars.started = g.wars.started
             e.wars.ends = g.wars.ends
 
-            SaveGangs(); BroadcastUpdate(gid); BroadcastUpdate(enemy)
+            SaveGangs()
+            BroadcastUpdate(gid)
+            BroadcastUpdate(enemy)
+
+            -- NEW: War HUD Start
+            net.Start("Dubz_GangWar_Start")
+                net.WriteString(gid)
+                net.WriteString(enemy)
+                net.WriteFloat(g.wars.ends)
+            net.Broadcast()
+
+            GangNotify(ply, 0, 5, "War declared against " .. (e.name or enemy) .. "!")
+
             return
         end
 
@@ -1043,43 +1232,121 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         end
 
         if act.cmd == "forfeit_war" and gid and IsLeader(ply, gid) then
-            local g = Dubz.Gangs[gid]; if not g or not g.wars or not g.wars.active then return end
-            local enemy = g.wars.enemy; local e = Dubz.Gangs[enemy]; if not e then return end
+            local g = Dubz.Gangs[gid]
+            if not g or not g.wars or not g.wars.active then
+                GangNotify(ply, 1, 5, "Your gang is not currently in a war.")
+                return
+            end
 
-            -- tribute to enemy
+            local enemy = g.wars.enemy
+            local e = Dubz.Gangs[enemy]
+            if not e then return end
+
             local tribute = math.floor((g.bank or 0) * (CFG.Wars.TributePercent or 0.1))
+
             g.bank = math.max(0, (g.bank or 0) - tribute)
             e.bank = math.max(0, (e.bank or 0) + tribute)
 
-            g.wars = {}; e.wars = {}
-            SaveGangs(); RebuildRichestGangs(); BroadcastUpdate(gid); BroadcastUpdate(enemy)
+            g.wars = {}
+            e.wars = {}
+
+            SaveGangs()
+            RebuildRichestGangs()
+            BroadcastUpdate(gid)
+            BroadcastUpdate(enemy)
+
+            net.Start("Dubz_GangWar_End")
+                net.WriteString(gid)
+            net.Broadcast()
+
+            net.Start("Dubz_GangWar_End")
+                net.WriteString(enemy)
+            net.Broadcast()
+
+            GangNotify(ply, 1, 6, "Your gang forfeited the war and paid tribute.")
+
             return
         end
 
         -- Auto-end wars by time (think)
-        hook.Add("Think","Dubz_Gangs_WarTicker", function()
+        hook.Add("Think", "Dubz_Gangs_WarTicker", function()
             for gid, g in pairs(Dubz.Gangs) do
                 if g.wars and g.wars.active and (g.wars.ends or 0) <= CurTime() then
+
                     local enemy = g.wars.enemy
                     local e = Dubz.Gangs[enemy]
+
                     if e then
-                        -- winner = higher bank at end
                         local tributeFrom, tributeTo = g, e
+
                         if (g.bank or 0) >= (e.bank or 0) then
                             tributeFrom, tributeTo = e, g
                         end
-                        local tribute = math.floor((tributeFrom.bank or 0) * (CFG.Wars.TributePercent or 0.1))
+
+                        local tribute = math.floor((tributeFrom.bank or 0) *
+                            (CFG.Wars.TributePercent or 0.1))
+
                         tributeFrom.bank = math.max(0, (tributeFrom.bank or 0) - tribute)
                         tributeTo.bank = math.max(0, (tributeTo.bank or 0) + tribute)
-                        g.wars = {}; e.wars = {}
-                        SaveGangs(); RebuildRichestGangs(); BroadcastUpdate(gid); BroadcastUpdate(enemy)
+
+                        g.wars = {}
+                        e.wars = {}
+
+                        SaveGangs()
+                        RebuildRichestGangs()
+                        BroadcastUpdate(gid)
+                        BroadcastUpdate(enemy)
+
+                        -- END HUD for both
+                        net.Start("Dubz_GangWar_End")
+                            net.WriteString(gid)
+                        net.Broadcast()
+
+                        net.Start("Dubz_GangWar_End")
+                            net.WriteString(enemy)
+                        net.Broadcast()
+
+                        -- Notify only the leaders
+                        for _, ply in ipairs(player.GetAll()) do
+                            if IsValid(ply) then
+                                local sid = ply:SteamID64()
+                                if sid == g.leaderSid64 then
+                                    GangNotify(ply, 0, 5, "Your war has ended!")
+                                elseif sid == e.leaderSid64 then
+                                    GangNotify(ply, 0, 5, "Your war has ended!")
+                                end
+                            end
+                        end
+
                     else
-                        g.wars = {}; SaveGangs(); BroadcastUpdate(gid)
+                        g.wars = {}
+                        SaveGangs()
+                        BroadcastUpdate(gid)
+
+                        net.Start("Dubz_GangWar_End")
+                            net.WriteString(gid)
+                        net.Broadcast()
                     end
                 end
             end
         end)
     end
+end)
+
+hook.Add("PlayerDisconnected", "Dubz_Gang_CacheWealth", function(ply)
+    local sid = ply:SteamID64()
+    local gid = Dubz.GangByMember[sid]
+    if not gid or not Dubz.Gangs[gid] then return end
+
+    local g = Dubz.Gangs[gid]
+    g._CachedWealth = g._CachedWealth or {}
+
+    g._CachedWealth[sid] = {
+        clean = math.max(0, (ply.getDarkRPVar and ply:getDarkRPVar("money")) or 0),
+        dirty = math.max(0, ply.GetDirtyMoney and ply:GetDirtyMoney() or 0)
+    }
+
+    Dubz.RecomputeAllGangWealth()
 end)
 
 util.AddNetworkString("Dubz_Gang_RequestSync")
