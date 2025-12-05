@@ -452,7 +452,13 @@ end)
 -----------------------------------------
 local oldAdd = chat.AddText
 function chat.AddText(...)
-    if oldAdd then oldAdd(...) end
+    -- Keep everything inside the Dubz chat panel; skip the default chat.AddText handler
+    -- so ULX, DarkRP adverts, and other system messages don't spawn outside the panel.
+    if oldAdd and oldAdd == chat.AddText then
+        -- prevent recursive calls if something reassigns chat.AddText later
+        oldAdd = nil
+    end
+
     AppendMessage({...})
 end    -- ★ FIXED: removed incorrect extra ")"
 
