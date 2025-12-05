@@ -350,7 +350,6 @@ local function OpenGraffitiEditor(accent)
     if not IsLeaderC() then return end
 
     g.graffiti = g.graffiti or {}
-    g.graffiti.bgMat        = g.graffiti.bgMat        or "brick/brick_model"
     g.graffiti.scale        = g.graffiti.scale        or 1
     g.graffiti.outlineSize  = g.graffiti.outlineSize  or 1
     g.graffiti.shadowOffset = g.graffiti.shadowOffset or 2
@@ -378,15 +377,11 @@ local function OpenGraffitiEditor(accent)
     -----------------------------------------------------
     -- PREVIEW
     -----------------------------------------------------
-    local bgMatName = g.graffiti.bgMat or "brick/brick_model"
-
     local preview = vgui.Create("DPanel", frame)
     preview:SetPos(20, 60)
     preview:SetSize(320, 220)
     preview.Paint = function(self, pw, ph)
-        surface.SetMaterial(Material(bgMatName, "smooth"))
-        surface.SetDrawColor(255,255,255)
-        surface.DrawTexturedRect(0, 0, pw, ph)
+        draw.RoundedBox(6, 0, 0, pw, ph, Color(25, 25, 25, 220))
 
         local text = g.graffiti.text or g.name or ""
         local font = g.graffiti.fontScaled or g.graffiti.font or "DubzHUD_Header"
@@ -443,15 +438,19 @@ local function OpenGraffitiEditor(accent)
     local fontBox = vgui.Create("DComboBox", frame)
     fontBox:SetPos(ctrlX, 90)
     fontBox:SetSize(ctrlW, 24)
-    fontBox:SetValue(g.graffiti.font or "DubzHUD_Header")
+    fontBox:SetSortItems(false)
 
     local fonts = {}
     for _, f in ipairs(Dubz.Config.GraffitiFonts) do
         table.insert(fonts, f.id)
     end
 
+    local defaultFont = g.graffiti.font or fonts[1] or "DubzHUD_Header"
+    g.graffiti.font = defaultFont
+    fontBox:SetValue(defaultFont)
+
     for _, f in ipairs(fonts) do
-        fontBox:AddChoice(f)
+        fontBox:AddChoice(f, nil, f == defaultFont)
     end
 
     fontBox.OnSelect = function(_, _, val)
@@ -531,31 +530,6 @@ local function OpenGraffitiEditor(accent)
     RefreshEffectVisibility()
 
     -----------------------------------------------------
-    -- BACKGROUND MATERIAL
-    -----------------------------------------------------
-    local bgBox = vgui.Create("DComboBox", frame)
-    bgBox:SetPos(ctrlX, 230)
-    bgBox:SetSize(ctrlW, 24)
-    bgBox:SetValue(g.graffiti.bgMat or "brick/brick_model")
-
-    local bgChoices = {
-        "brick/brick_model",
-        "models/debug/debugwhite",
-        "models/props/cs_assault/moneywrap03",
-        "models/props_combine/stasisshield_sheet",
-        "models/props_c17/fisheyelens"
-    }
-    for _, choice in ipairs(bgChoices) do
-        bgBox:AddChoice(choice)
-    end
-
-    bgBox.OnSelect = function(_,_,val)
-        g.graffiti.bgMat = val
-        bgMatName = val
-        preview:InvalidateLayout(true)
-    end
-
-    -----------------------------------------------------
     -- COLORS: GANG + GRAFFITI
     -----------------------------------------------------
     local gangColorLabel = vgui.Create("DLabel", frame)
@@ -629,7 +603,6 @@ local function OpenGraffitiEditor(accent)
             effect       = g.graffiti.effect or "Clean",
             outlineSize  = g.graffiti.outlineSize,
             shadowOffset = g.graffiti.shadowOffset,
-            bgMat        = g.graffiti.bgMat or "brick/brick_model",
             color        = g.graffiti.color or g.color or { r=255,g=255,b=255 }
         })
 

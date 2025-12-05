@@ -97,13 +97,10 @@ local function NormalizeGraffitiClient(g)
     -- extra cosmetics with sane defaults
     g.graffiti.outlineSize   = tonumber(g.graffiti.outlineSize) or 1
     g.graffiti.shadowOffset  = tonumber(g.graffiti.shadowOffset) or 2
-    g.graffiti.bgMat         = g.graffiti.bgMat or "brick/brick_model"
 
     g.graffiti.fontScaled =
         g.graffiti.fontScaled or
         ("DubzGraffiti_Font_" .. math.floor(g.graffiti.scale * 100))
-
-    g.graffiti.bgMat = g.graffiti.bgMat or "brick/brick_model"
 
     local base = g.graffiti.color or g.color or { r=255, g=255, b=255 }
     g.graffiti.color = {
