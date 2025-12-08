@@ -287,19 +287,30 @@ Dubz.RegisterTab("dashboard","Dashboard","dashboard", function(parent)
 
             -- Pull REAL networth from Dubz.Gangs
             for gid, g in pairs(Dubz.Gangs or {}) do
-                local name = g.name or ("Gang " .. gid)
+                local name  = g.name or ("Gang " .. gid)
                 local worth = tonumber(g.networth) or 0
+                local level = math.max(1, tonumber(g.level) or 1)
+                local colTbl = g.color or { r = 255, g = 255, b = 255 }
+
+                -- Level influences ranking in addition to pure networth
+                local score = worth + level * 1000
 
                 table.insert(gangs, {
-                    name = name,
-                    money = worth,
+                    name   = name,
+                    money  = worth,
+                    level  = level,
+                    color  = Color(colTbl.r or 255, colTbl.g or 255, colTbl.b or 255),
+                    score  = score,
                     isOnline = false
                 })
             end
 
-            -- Sort by networth DESC
+            -- Sort by composite score (networth + level weight)
             table.sort(gangs, function(a, b)
-                return (a.money or 0) > (b.money or 0)
+                if (a.score or 0) == (b.score or 0) then
+                    return (a.money or 0) > (b.money or 0)
+                end
+                return (a.score or 0) > (b.score or 0)
             end)
 
             local gshow = Dubz.Config.Gangs.DashboardTopCount or 5
@@ -319,7 +330,13 @@ Dubz.RegisterTab("dashboard","Dashboard","dashboard", function(parent)
 
                 draw.SimpleText("#"..i, "DubzHUD_Small", listX + 10, gy + gyoff + 10, rcol)
 
-                draw.SimpleText(t.name, "DubzHUD_Body", listX + 140, gy + gyoff + 8, Color(230,230,230))
+                surface.SetDrawColor(t.color or Color(255,255,255))
+                draw.RoundedBox(6, listX + 38, gy + gyoff + 10, 16, 16, t.color or Color(255,255,255))
+
+                draw.SimpleText(t.name, "DubzHUD_Body", listX + 64, gy + gyoff + 8, Color(230,230,230))
+
+                draw.RoundedBox(6, listX + 64, gy + gyoff + 24, 60, 12, Color(20,20,20,200))
+                draw.SimpleText("Lv." .. tostring(t.level or 1), "DubzHUD_Tiny", listX + 94, gy + gyoff + 30, Color(200,220,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
                 local moneyText = DarkRP and DarkRP.formatMoney
                     and DarkRP.formatMoney(t.money)
