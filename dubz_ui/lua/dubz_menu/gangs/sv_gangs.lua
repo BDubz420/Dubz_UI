@@ -395,11 +395,11 @@ function BroadcastUpdate(gid)
     net.Broadcast()
 end
 
--- TERRITORY PAYOUT HANDLER
+-- CLEAN + SUMMARIZED TERRITORY PAYOUT HANDLER
 hook.Add("Dubz_Gang_TerritoryPayout", "Dubz_Gang_TerritoryPayout_Handler", function(gangId, ent, total, onlineMembers)
     if not gangId or not Dubz.Gangs or not Dubz.Gangs[gangId] then return end
 
-    local TCFG = Dubz.Config and Dubz.Config.Territories or {}
+    local TCFG      = Dubz.Config and Dubz.Config.Territories or {}
     local incomeCfg = TCFG.Income or {}
     if incomeCfg.Enabled == false then return end
 
@@ -413,79 +413,103 @@ hook.Add("Dubz_Gang_TerritoryPayout", "Dubz_Gang_TerritoryPayout_Handler", funct
         and ent:GetTerritoryName()
         or "territory"
 
+    ------------------------------------------------------
+    -- FRACTIONS
+    ------------------------------------------------------
     local bankFrac    = incomeCfg.GangBankShare or 0.8
     local memberFrac  = incomeCfg.MemberShare or 0.2
 
-    -- clamp so they don't exceed 1.0
     local sumFrac = bankFrac + memberFrac
     if sumFrac > 1 then
         bankFrac   = bankFrac   / sumFrac
         memberFrac = memberFrac / sumFrac
     end
 
-    local bankAmount   = math.floor(total * bankFrac)
-    local membersTotal = math.floor(total * memberFrac)
+    local bankAmt   = math.floor(total * bankFrac)
+    local memberAmt = math.floor(total * memberFrac)
 
-    --------------------------------------------------
-    -- Gang bank
-    --------------------------------------------------
-    if bankAmount > 0 and (Dubz.Config.Gangs.BankEnabled ~= false) then
-        gang.bank = math.max(0, (gang.bank or 0) + bankAmount)
-        SaveGangs()
-        RebuildRichestGangs()
-        BroadcastUpdate(gangId)
+    ------------------------------------------------------
+    -- ACCUMULATORS FOR SUMMARY OUTPUT
+    ------------------------------------------------------
+    gang._TerritoryBankEarnings = (gang._TerritoryBankEarnings or 0) + bankAmt
 
-        local leaderSid = gang.leaderSid64
-        if leaderSid and leaderSid ~= "" then
-            for _, ply in ipairs(player.GetAll()) do
-                if IsValid(ply) and ply:SteamID64() == leaderSid then
-                    GangNotify(ply, 0, 6, string.format("Territory income added $%d to the gang bank from %s.", bankAmount, territoryName))
-                end
-            end
+    -- Member earnings stored per player
+    for _, ply in ipairs(onlineMembers) do
+        if IsValid(ply) then
+            ply._TerritoryMemberEarnings = (ply._TerritoryMemberEarnings or 0) + memberAmt / #onlineMembers
         end
     end
 
-    --------------------------------------------------
-    -- Online members share
-    --------------------------------------------------
-    if membersTotal > 0 and incomeCfg.GiveOnlineMembers ~= false and #onlineMembers > 0 then
-        local per = math.floor(membersTotal / #onlineMembers)
-        if per > 0 then
-            for _, ply in ipairs(onlineMembers) do
-                if IsValid(ply) then
-                    AddMoney(ply, per)
-                    GangNotify(ply, 0, 4, string.format("You earned $%d from your gang's territory (%s).", per, territoryName))
-                end
-            end
-        end
-    end
-
-    --------------------------------------------------
-    -- Presence bonus for defenders on-site
-    --------------------------------------------------
+    -- Presence bonus (defenders)
     local holders = {}
-    local bonusAmount = math.max(100, math.floor((incomeCfg.TotalPerTick or 500) * 0.3))
-    for _, ply in ipairs(player.GetAll()) do
-        if not IsValid(ply) then continue end
-        if Dubz.GangByMember[ply:SteamID64()] ~= gangId then continue end
+    local presenceBonus = math.max(100, math.floor((incomeCfg.TotalPerTick or 500) * 0.3))
 
-        local dist = (ply:GetPos() - ent:GetPos()):Length()
-        if dist <= 500 then
-            table.insert(holders, ply)
+    for _, ply in ipairs(player.GetAll()) do
+        if IsValid(ply) 
+        and Dubz.GangByMember[ply:SteamID64()] == gangId 
+        and ply:GetPos():DistToSqr(ent:GetPos()) <= 500^2
+        then
+            holders[#holders + 1] = ply
         end
     end
 
     for _, ply in ipairs(holders) do
-        AddMoney(ply, bonusAmount)
-        GangNotify(ply, 0, 4, string.format("Holding %s paid you $%d for staying on-site.", territoryName, bonusAmount))
+        ply._TerritoryPresenceEarnings = (ply._TerritoryPresenceEarnings or 0) + presenceBonus
     end
+end)
 
-    if territoryName and territoryName ~= "" and gang.leaderSid64 then
-        for _, ply in ipairs(player.GetAll()) do
-            if IsValid(ply) and ply:SteamID64() == gang.leaderSid64 then
-                GangNotify(ply, 0, 5, string.format("Territory %s paid out to your gang.", territoryName))
+
+-- TIMER: SEND SUMMARIZED OUTPUT TO LEADER + MEMBERS
+timer.Create("Dubz_Gang_TerritoryPayout_Summary", 1, 0, function()
+    -- Run once per second; only outputs if values accumulated
+
+    for gangId, gang in pairs(Dubz.Gangs or {}) do
+        local bankEarn = gang._TerritoryBankEarnings or 0
+        if bankEarn > 0 then
+            -- Add to bank
+            gang.bank = math.max(0, (gang.bank or 0) + bankEarn)
+            SaveGangs()
+            RebuildRichestGangs()
+            BroadcastUpdate(gangId)
+
+            -- Find leader online
+            local leaderSid = gang.leaderSid64
+            if leaderSid then
+                for _, ply in ipairs(player.GetAll()) do
+                    if ply:SteamID64() == leaderSid then
+                        -- ONE MESSAGE ONLY
+                        GangNotify(ply, 0, 6, 
+                            string.format("[Territories] Your gang earned $%s total this cycle.", 
+                            string.Comma(bankEarn)))
+                    end
+                end
             end
         end
+
+        gang._TerritoryBankEarnings = 0
+    end
+
+    -- MEMBERS + DEFENDERS (ONE MESSAGE EACH)
+    for _, ply in ipairs(player.GetAll()) do
+        local memberEarn = ply._TerritoryMemberEarnings or 0
+        local presEarn   = ply._TerritoryPresenceEarnings or 0
+
+        if memberEarn > 0 then
+            AddMoney(ply, math.floor(memberEarn))
+            GangNotify(ply, 0, 4, 
+                string.format("[Territories] You earned $%s from gang territories.", 
+                string.Comma(memberEarn)))
+        end
+
+        if presEarn > 0 then
+            AddMoney(ply, math.floor(presEarn))
+            GangNotify(ply, 0, 4,
+                string.format("[Territories] You earned $%s for holding territory.", 
+                string.Comma(presEarn)))
+        end
+
+        ply._TerritoryMemberEarnings = 0
+        ply._TerritoryPresenceEarnings = 0
     end
 end)
 

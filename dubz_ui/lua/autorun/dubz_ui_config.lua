@@ -202,14 +202,16 @@ Dubz.Config.Territories = {
     -- Income settings
     Income = {
         Enabled = true,
-        Interval = 60,           -- seconds between payouts per pole
-        TotalPerTick = 500,      -- total money generated per tick
 
-        GangBankShare = 0.8,     -- 80% of TotalPerTick -> gang bank
-        MemberShare = 0.2,       -- 20% -> online members of that gang
+        -- Balanced for a low-pop, rags→riches server
+        Interval = 300,             -- 5 minutes per payout
+        TotalPerTick = 180,         -- per territory (balanced)
 
-        GiveOnlineMembers = true, -- if false, 100% goes to gang bank
-        RequireOwnerOnline = false -- if true, no income if no member of gang is online
+        GangBankShare = 0.7,        -- 70% → gang bank
+        MemberShare = 0.3,          -- 30% split between online members
+
+        GiveOnlineMembers = true,   -- players actually get income now
+        RequireOwnerOnline = true   -- prevents offline gang farming
     },
 
     -- “claimed by” players tracking

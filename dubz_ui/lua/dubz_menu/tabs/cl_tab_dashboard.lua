@@ -276,50 +276,58 @@ Dubz.RegisterTab("dashboard","Dashboard","dashboard", function(parent)
         end
 
         ------------------------------------------------------
-        -- 🏴 Richest Gangs (optional)
+        -- 🏴 Richest Gangs (NETWORTH FIXED)
         ------------------------------------------------------
         if Dubz.Config and Dubz.Config.Gangs and Dubz.Config.Gangs.Enabled and Dubz.Config.Gangs.ShowOnDashboard then
             local gy = listY + yoff + 20
+
             draw.SimpleText("Top Richest Gangs", "DubzHUD_Header", listX, gy - 24, accent)
+
             local gangs = {}
-            local gangMap = {}
 
-            for _, ply in ipairs(player.GetAll()) do
-                if IsValid(ply) then
-                    local gname = ply:GetNWString("DubzGang", "")
-                    if gname ~= "" then
-                        local cash = (ply.getDarkRPVar and ply:getDarkRPVar("money")) or 0
-                        local amt = math.floor(tonumber(cash) or 0)
-                        if gangMap[gname] then
-                            gangMap[gname].money = gangMap[gname].money + amt
-                        else
-                            gangMap[gname] = { name = gname, money = amt, isOnline = true }
-                        end
-                    end
-                end
+            -- Pull REAL networth from Dubz.Gangs
+            for gid, g in pairs(Dubz.Gangs or {}) do
+                local name = g.name or ("Gang " .. gid)
+                local worth = tonumber(g.networth) or 0
+
+                table.insert(gangs, {
+                    name = name,
+                    money = worth,
+                    isOnline = false
+                })
             end
 
-            for gname, amt in pairs(Dubz.RichestGangs or {}) do
-                if not gangMap[gname] then
-                    gangMap[gname] = { name = gname, money = tonumber(amt) or 0, isOnline = false }
-                end
-            end
+            -- Sort by networth DESC
+            table.sort(gangs, function(a, b)
+                return (a.money or 0) > (b.money or 0)
+            end)
 
-            for _, entry in pairs(gangMap) do
-                table.insert(gangs, entry)
-            end
-            table.sort(gangs, function(a, b) return (a.money or 0) > (b.money or 0) end)
-            local gshow = (Dubz.Config.Gangs.DashboardTopCount) or 5
+            local gshow = Dubz.Config.Gangs.DashboardTopCount or 5
             local gyoff = 0
+
             for i = 1, math.min(gshow, #gangs) do
                 local t = gangs[i]
+
                 Dubz.DrawBubble(listX, gy + gyoff, listW, 38, Color(24,24,24,220))
-                local rcol = (i==1 and Color(255,215,0)) or (i==2 and Color(192,192,192)) or (i==3 and Color(205,127,50)) or Color(230,230,230)
+
+                -- Rank colors
+                local rcol =
+                    (i == 1 and Color(255,215,0)) or
+                    (i == 2 and Color(192,192,192)) or
+                    (i == 3 and Color(205,127,50)) or
+                    Color(230,230,230)
+
                 draw.SimpleText("#"..i, "DubzHUD_Small", listX + 10, gy + gyoff + 10, rcol)
-                local nameCol = t.isOnline and Color(120,255,160) or Color(230,230,230)
-                draw.SimpleText(t.name or "Gang", "DubzHUD_Body", listX + 140, gy + gyoff + 8, nameCol)
-                local moneyText = (DarkRP and DarkRP.formatMoney and DarkRP.formatMoney(t.money)) or ("$"..tostring(t.money))
-                draw.SimpleText(moneyText, "DubzHUD_Body", listX + listW - 10, gy + gyoff + 8, Color(230,230,230), TEXT_ALIGN_RIGHT)
+
+                draw.SimpleText(t.name, "DubzHUD_Body", listX + 140, gy + gyoff + 8, Color(230,230,230))
+
+                local moneyText = DarkRP and DarkRP.formatMoney
+                    and DarkRP.formatMoney(t.money)
+                    or ("$" .. tostring(t.money))
+
+                draw.SimpleText(moneyText, "DubzHUD_Body", listX + listW - 10, gy + gyoff + 8,
+                    Color(230,230,230), TEXT_ALIGN_RIGHT)
+
                 gyoff = gyoff + 44
             end
         end
