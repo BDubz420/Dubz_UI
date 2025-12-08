@@ -336,7 +336,7 @@ Dubz.RegisterTab("dashboard","Dashboard","dashboard", function(parent)
                 draw.SimpleText(t.name, "DubzHUD_Body", listX + 64, gy + gyoff + 8, Color(230,230,230))
 
                 draw.RoundedBox(6, listX + 64, gy + gyoff + 24, 60, 12, Color(20,20,20,200))
-                draw.SimpleText("Lv." .. tostring(t.level or 1), "DubzHUD_Tiny", listX + 94, gy + gyoff + 30, Color(200,220,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                draw.SimpleText("Lv." .. tostring(t.level or 1), "DubzHUD_Tag", listX + 94, gy + gyoff + 30, Color(200,220,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
                 local moneyText = DarkRP and DarkRP.formatMoney
                     and DarkRP.formatMoney(t.money)
