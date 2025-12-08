@@ -287,19 +287,30 @@ Dubz.RegisterTab("dashboard","Dashboard","dashboard", function(parent)
 
             -- Pull REAL networth from Dubz.Gangs
             for gid, g in pairs(Dubz.Gangs or {}) do
-                local name = g.name or ("Gang " .. gid)
+                local name  = g.name or ("Gang " .. gid)
                 local worth = tonumber(g.networth) or 0
+                local level = math.max(1, tonumber(g.level) or 1)
+                local colTbl = g.color or { r = 255, g = 255, b = 255 }
+
+                -- Level influences ranking in addition to pure networth
+                local score = worth + level * 1000
 
                 table.insert(gangs, {
-                    name = name,
-                    money = worth,
+                    name   = name,
+                    money  = worth,
+                    level  = level,
+                    color  = Color(colTbl.r or 255, colTbl.g or 255, colTbl.b or 255),
+                    score  = score,
                     isOnline = false
                 })
             end
 
-            -- Sort by networth DESC
+            -- Sort by composite score (networth + level weight)
             table.sort(gangs, function(a, b)
-                return (a.money or 0) > (b.money or 0)
+                if (a.score or 0) == (b.score or 0) then
+                    return (a.money or 0) > (b.money or 0)
+                end
+                return (a.score or 0) > (b.score or 0)
             end)
 
             local gshow = Dubz.Config.Gangs.DashboardTopCount or 5
@@ -307,8 +318,9 @@ Dubz.RegisterTab("dashboard","Dashboard","dashboard", function(parent)
 
             for i = 1, math.min(gshow, #gangs) do
                 local t = gangs[i]
+                local rowY = gy + gyoff
 
-                Dubz.DrawBubble(listX, gy + gyoff, listW, 38, Color(24,24,24,220))
+                Dubz.DrawBubble(listX, rowY, listW, 38, Color(24,24,24,220))
 
                 -- Rank colors
                 local rcol =
@@ -317,15 +329,23 @@ Dubz.RegisterTab("dashboard","Dashboard","dashboard", function(parent)
                     (i == 3 and Color(205,127,50)) or
                     Color(230,230,230)
 
-                draw.SimpleText("#"..i, "DubzHUD_Small", listX + 10, gy + gyoff + 10, rcol)
+                draw.SimpleText("#"..i, "DubzHUD_Small", listX + 10, rowY + 10, rcol)
 
-                draw.SimpleText(t.name, "DubzHUD_Body", listX + 140, gy + gyoff + 8, Color(230,230,230))
+                local swatchX = listX + 72
+                surface.SetDrawColor(t.color or Color(255,255,255))
+                draw.RoundedBox(6, swatchX, rowY + 9, 18, 18, t.color or Color(255,255,255))
+
+                local nameX = swatchX + 30
+                draw.SimpleText(t.name, "DubzHUD_Body", nameX, rowY + 8, Color(180,180,180))
+
+                draw.RoundedBox(6, nameX, rowY + 24, 70, 12, Color(20,20,20,200))
+                draw.SimpleText("Lv." .. tostring(t.level or 1), "DubzHUD_Tag", nameX + 35, rowY + 30, Color(200,220,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
                 local moneyText = DarkRP and DarkRP.formatMoney
                     and DarkRP.formatMoney(t.money)
                     or ("$" .. tostring(t.money))
 
-                draw.SimpleText(moneyText, "DubzHUD_Body", listX + listW - 10, gy + gyoff + 8,
+                draw.SimpleText(moneyText, "DubzHUD_Body", listX + listW - 10, rowY + 8,
                     Color(230,230,230), TEXT_ALIGN_RIGHT)
 
                 gyoff = gyoff + 44

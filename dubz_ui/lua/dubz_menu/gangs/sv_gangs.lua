@@ -56,6 +56,42 @@ local function NormalizeTerritory(id, terr)
     return data
 end
 
+local function EnsureGangLevel(g)
+    g.level = math.max(1, tonumber(g.level) or 1)
+    g.xp    = math.max(0, tonumber(g.xp) or 0)
+end
+
+local function XPForLevel(level)
+    return 250 + math.floor((level - 1) * 125)
+end
+
+function Dubz.GangAddXP(gid, reason)
+    local g = Dubz.Gangs and Dubz.Gangs[gid]
+    if not g then return end
+
+    EnsureGangLevel(g)
+
+    g._lastXP = g._lastXP or {}
+    local now = CurTime()
+    if g._lastXP[reason] and now - g._lastXP[reason] < 5 then return end
+    g._lastXP[reason] = now
+
+    local base = 20
+    if reason == "member_join" then base = 50 end
+    if reason == "territory_claim" then base = 120 end
+    if reason == "territory_payout" then base = 30 end
+
+    g.xp = g.xp + base
+
+    while g.xp >= XPForLevel(g.level) do
+        g.xp = g.xp - XPForLevel(g.level)
+        g.level = g.level + 1
+    end
+
+    SaveGangs()
+    BroadcastUpdate(gid)
+end
+
 local function GangNotify(ply, msgType, length, msg)
     if DarkRP and DarkRP.notify then
         DarkRP.notify(ply, msgType, length, msg)
@@ -311,6 +347,7 @@ function LoadGangs()
         if not SanitizeGang(gid, g) then
             Dubz.Gangs[gid] = nil
         else
+            EnsureGangLevel(g)
             g.territories = {}
             g.wars = {}
             print(string.format("[Dubz Gangs] Loaded gang %-20s members=%d bank=%s", gid, table.Count(g.members or {}), tostring(g.bank or 0)))
@@ -340,6 +377,7 @@ function SendFullSync(ply)
     local toSend = {}
 
     for gid, g in pairs(Dubz.Gangs or {}) do
+        EnsureGangLevel(g)
         NormalizeGraffiti(g)
 
         -- Copy AFTER normalizing
@@ -541,9 +579,13 @@ local function ComputeGangWealth(gid, g)
         for _, ply in ipairs(player.GetAll()) do
             if IsValid(ply) and ply:SteamID64() == sid64 then
                 clean = clean + math.max(0, (ply.getDarkRPVar and ply:getDarkRPVar("money")) or 0)
+                local d = 0
                 if ply.GetDirtyMoney then
-                    dirty = dirty + math.max(0, ply:GetDirtyMoney())
+                    d = ply:GetDirtyMoney()
+                elseif ply.getDarkRPVar then
+                    d = ply:getDarkRPVar("dirtymoney") or 0
                 end
+                dirty = dirty + math.max(0, d)
             end
         end
     end
@@ -1095,6 +1137,8 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
             leaderSid64 = sid,
             created = os.time(),
             bank = 0,
+            level = 1,
+            xp = 0,
 
             rankTitles = table.Copy(Dubz.DefaultRankTitles),
 
@@ -1192,6 +1236,29 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         return
     end
 
+    if act.cmd == "unclaim_territory" and gid and IsLeader(ply, gid) then
+        local target = tostring(act.target or "")
+        if target == "" then return end
+
+        RemoveGangTerritory(gid, target)
+
+        for _, ent in ipairs(ents.FindByClass("ent_dubz_graffiti_spot")) do
+            if IsValid(ent) and ent.GetOwnerGangId and ent:GetOwnerGangId() == gid then
+                local idMatch = ent.TerritoryRecordId and tostring(ent.TerritoryRecordId) == target
+                local nameMatch = ent.GetTerritoryName and ent:GetTerritoryName() == target
+                if idMatch or nameMatch then
+                    ent:ResetOwnership("Unclaimed Territory")
+                    break
+                end
+            end
+        end
+
+        SaveGangs()
+        BroadcastUpdate(gid)
+        GangNotify(ply, 0, 4, "Territory unclaimed.")
+        return
+    end
+
     -- DISBAND (leader)
     if act.cmd == "disband" and gid and IsLeader(ply, gid) then
 
@@ -1271,6 +1338,10 @@ net.Receive("Dubz_Gang_Action", function(_, ply)
         g.members[sid] = { name = ply:Nick(), rank = Dubz.GangRanks.Member, joined = os.time() }
         Dubz.GangByMember[sid] = inv.gid
         PendingInvites[sid] = nil
+
+        if Dubz.GangAddXP then
+            Dubz.GangAddXP(inv.gid, "member_join")
+        end
 
         SaveGangs()
         RebuildRichestGangs()
@@ -1704,7 +1775,10 @@ hook.Add("PlayerDisconnected", "Dubz_Gang_CacheWealth", function(ply)
 
     g._CachedWealth[sid] = {
         clean = math.max(0, (ply.getDarkRPVar and ply:getDarkRPVar("money")) or 0),
-        dirty = math.max(0, ply.GetDirtyMoney and ply:GetDirtyMoney() or 0)
+        dirty = math.max(0,
+            (ply.GetDirtyMoney and ply:GetDirtyMoney())
+            or (ply.getDarkRPVar and ply:getDarkRPVar("dirtymoney"))
+            or 0)
     }
 
     Dubz.RecomputeAllGangWealth()
