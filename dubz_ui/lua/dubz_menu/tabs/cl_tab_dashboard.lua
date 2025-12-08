@@ -40,7 +40,7 @@ Dubz.RegisterTab("dashboard","Dashboard","dashboard", function(parent)
 
     local pnl = vgui.Create("DPanel", parent)
     pnl:Dock(FILL)
-    pnl:DockMargin(12,12,12,12)
+    --pnl:DockMargin(12,12,12,12)
     pnl:SetPaintBackground(false)
 
     pnl._state = { money = 0, avg = 0, count = 0, max = game.MaxPlayers() or 0, trend = {}, avgTrend = {} }
@@ -79,7 +79,7 @@ Dubz.RegisterTab("dashboard","Dashboard","dashboard", function(parent)
     ----------------------------------------------------------
     function pnl:Paint(w,h)
         local pad = 12
-        local bubbleW = math.floor((w - pad*3) / 3)
+        local bubbleW = math.floor((w - pad*4) / 3)
         local bubbleH = 140
 
         -- Top bubbles

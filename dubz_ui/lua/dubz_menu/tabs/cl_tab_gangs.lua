@@ -150,13 +150,13 @@ hook.Add("Dubz_Gangs_GangUpdated","Dubz_Gangs_Tab_UpdateRefresh", QueueMenuRefre
 local function PanelFrame(x, y, w, h, accent, side)
     side = side or "left"
 
-    draw.RoundedBox(8, x, y, w, h, Color(18,18,18,235))
+    draw.RoundedBox(8, x, y, w, h, Color(22,22,22,220))
 
     surface.SetDrawColor(accent.r, accent.g, accent.b, 255)
     if side == "top" then
-        surface.DrawRect(x, y, w, 3)
+        --surface.DrawRect(x, y, w, 3)
     else -- left
-        surface.DrawRect(x, y, 3, h)
+        --surface.DrawRect(x, y, 3, h)
     end
 end
 
@@ -178,7 +178,7 @@ end
 local function DrawCreateGang(pnl, w, y, accent)
     local bw, bh = w - 24, 170
 
-    PanelFrame(12, y, bw, bh, accent, "top")
+    PanelFrame(0, y, bw, bh, accent, "top")
     draw.SimpleText("Create Organization", "DubzHUD_Title", 24, y + 10, accent)
 
     if not pnl._create then
@@ -831,9 +831,9 @@ local function DrawGangOverview(pnl, w, y, accent, g)
     local memberCount = table.Count(g.members or {})
 
     draw.SimpleText("Leader: " .. leaderName,
-        "DubzHUD_Label", idX + 16, idY + 60, Color(230,230,230))
+        "DubzHUD_Label", idX + 16, idY + 70, Color(230,230,230))
     draw.SimpleText("Members: " .. memberCount .. "/" .. (Dubz.Config.Gangs.MaxMembers or 12),
-        "DubzHUD_Label", idX + 16, idY + 80, Color(200,200,200))
+        "DubzHUD_Label", idX + 16, idY + 90, Color(200,200,200))
 
     ----------------------------------------------------
     -- Card 2: Wealth Analytics + Bank
@@ -1437,7 +1437,7 @@ Dubz.RegisterTab("gangs", Dubz.Config.Gangs.TabTitle or "Gangs", "users", functi
     -- Scroll panel wrapper
     local scroll = vgui.Create("DScrollPanel", parent)
     scroll:Dock(FILL)
-    scroll:DockMargin(12,12,12,12)
+    scroll:DockMargin(0,0,4,0)
 
     ---------------------------------------
     -- Scrollbar Styling (match market)
@@ -1447,8 +1447,7 @@ Dubz.RegisterTab("gangs", Dubz.Config.Gangs.TabTitle or "Gangs", "users", functi
 
         function sbar:Paint(w,h)
             local bg = (Dubz.Colors and Dubz.Colors.Background) or Color(0,0,0,150)
-            surface.SetDrawColor(bg)
-            surface.DrawRect(0,0,w,h)
+            --draw.RoundedBox(6, 0, 12, w, h - 24, bg)
         end
 
         function sbar.btnGrip:Paint(w,h)
@@ -1456,7 +1455,7 @@ Dubz.RegisterTab("gangs", Dubz.Config.Gangs.TabTitle or "Gangs", "users", functi
             local col = self:IsHovered()
                 and Color(acc.r + 25, acc.g + 25, acc.b + 25, 230)
                 or  Color(acc.r,      acc.g,      acc.b,      200)
-            draw.RoundedBox(6, 2, 0, w - 4, h, col)
+            --draw.RoundedBox(6, 2, 0, w - 4, h, col)
         end
 
         function sbar.btnUp:Paint() end
@@ -1497,8 +1496,8 @@ Dubz.RegisterTab("gangs", Dubz.Config.Gangs.TabTitle or "Gangs", "users", functi
         local g = GetMyGang()
         local y = 12
 
-        surface.SetDrawColor(0,0,0,190)
-        surface.DrawRect(0,0,w,h)
+        --surface.SetDrawColor(0,0,0,190)
+        --surface.DrawRect(0,0,w,h)
 
         if not g then
             self:SetGangVisible(false)

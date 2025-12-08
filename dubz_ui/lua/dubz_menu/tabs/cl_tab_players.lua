@@ -43,14 +43,14 @@ end
 
 local function PanelBG(w, h)
     if Dubz and Dubz.DrawBubble then
-        Dubz.DrawBubble(0,0,w,h, Color(0,0,0,120))
+        Dubz.DrawBubble(0,0,w,h, Color(24,24,24,220))
     end
 end
 
 local function AccentLine(y, w)
     local c = (Dubz and Dubz.GetAccentColor and Dubz.GetAccentColor()) or Color(120,170,255)
     surface.SetDrawColor(c)
-    surface.DrawRect(0, y, w, 2)
+    surface.DrawRect(0, y, w, 4)
 end
 
 Dubz.RegisterTab("players","Players","players", function(parent)
@@ -63,7 +63,7 @@ Dubz.RegisterTab("players","Players","players", function(parent)
     local header = vgui.Create("DPanel", root)
     header:Dock(TOP)
     header:SetTall(36)
-    header:DockMargin(8,8,8,0)
+    --header:DockMargin(0,0,08,0)
     function header:Paint(w,h)
         PanelBG(w,h)
         local cols = {
@@ -79,14 +79,14 @@ Dubz.RegisterTab("players","Players","players", function(parent)
         for _,c in ipairs(cols) do
             draw.SimpleText(c.name, "DubzHUD_Small", w*c.offset, h/2, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         end
-        AccentLine(h-2, w)
+        AccentLine(h-4, w)
     end
 
     ------------------ Scroll + ListLayout ------------------
     local scroll = vgui.Create("DScrollPanel", root)
     scroll:Dock(FILL)
-    scroll:DockMargin(8,6,8,8)
-    function scroll:Paint(w,h) PanelBG(w,h) end
+    --scroll:DockMargin(8,6,8,8)
+    --function scroll:Paint(w,h) PanelBG(w,h) end
 
     local layout = vgui.Create("DListLayout", scroll)
     layout:Dock(TOP) -- allow it to grow dynamically
@@ -180,7 +180,7 @@ Dubz.RegisterTab("players","Players","players", function(parent)
     local function AddRow(ply)
         local row = vgui.Create("DPanel", layout)
         row:Dock(TOP)
-        row:DockMargin(6,6,6,0)
+        row:DockMargin(0,3,0,3)
         row._baseTall = 44
         row._dropTall = 58
         row._expanded = false

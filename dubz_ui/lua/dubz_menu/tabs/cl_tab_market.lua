@@ -21,22 +21,23 @@ Dubz.RegisterTab("market", "Market", "market", function(parent)
     ---------------------------------------
     -- Scrollbar Styling
     ---------------------------------------
-    local sbar = pnl:GetVBar()
+        local sbar = pnl:GetVBar()
 
-    function sbar:Paint(w,h)
-        local bg = Dubz.Colors.Background or Color(0,0,0,150)
-        surface.SetDrawColor(bg)
-        surface.DrawRect(0,0,w,h)
-    end
-    function sbar.btnGrip:Paint(w,h)
-        local acc = Dubz.Colors.Accent or Color(37,150,190)
-        local col = self:IsHovered()
-            and Color(acc.r+25, acc.g+25, acc.b+25, 230)
-            or  Color(acc.r,   acc.g,   acc.b,   200)
-        draw.RoundedBox(6, 2, 0, w-4, h, col)
-    end
-    function sbar.btnUp:Paint() end
-    function sbar.btnDown:Paint() end
+        function sbar:Paint(w,h)
+            local bg = (Dubz.Colors and Dubz.Colors.Background) or Color(0,0,0,150)
+            draw.RoundedBox(6, 0, 12, w, h - 24, bg)
+        end
+
+        function sbar.btnGrip:Paint(w,h)
+            local acc = (Dubz.Colors and Dubz.Colors.Accent) or accent
+            local col = self:IsHovered()
+                and Color(acc.r + 25, acc.g + 25, acc.b + 25, 230)
+                or  Color(acc.r,      acc.g,      acc.b,      200)
+            draw.RoundedBox(6, 2, 0, w - 4, h, col)
+        end
+
+        function sbar.btnUp:Paint() end
+        function sbar.btnDown:Paint() end
 
 
     -------------------------------------------------------

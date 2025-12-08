@@ -15,7 +15,7 @@ local function ensureOverlay()
     if IsValid(overlay) then return overlay end
     overlay = vgui.Create("DPanel")
     overlay:SetSize(ScrW(), ScrH()); overlay:SetPos(0,0); overlay:SetZPos(0); overlay:SetVisible(false)
-    function overlay:Paint(w,h) draw.RoundedBox(0,0,0,w,h, Color(0,0,0,180)) end
+    function overlay:Paint(w,h) draw.RoundedBox(0,0,0,w,h, Color(0,0,0,0)) end
     return overlay
 end
 
@@ -40,14 +40,19 @@ local function openMenu(defaultTab, byF4)
     isOpen = true
 
     function frame:Paint(w,h)
-        draw.RoundedBox(cfg.CornerRadius or 12,0,0,w,h, cfg.Background or Color(0,0,0,160))
+        local drop_header_to_align = 20
+        if Dubz.Config.EnableServerName == true or openedByF4 then 
+            drop_header_to_align = 0 -- set to 0 for default
+        end
+
+        draw.RoundedBox(cfg.CornerRadius or 12, 0, drop_header_to_align, w, h-drop_header_to_align, cfg.Background or Color(0,0,0,160))
         draw.SimpleText("Dubz UI "..(Dubz.Config.Version or ""),"DubzHUD_Small", 12, h-20, Dubz.GetAccentColor())
     end
 
     -- Close button (visible when opened by F4)
     if openedByF4 then
         local close = vgui.Create("DButton", frame)
-        close:SetSize(28,28); close:SetPos(fw-36, 8); close:SetText("")
+        close:SetSize(28,20); close:SetPos(fw-40, 6); close:SetText("")
         function close:Paint(w,h)
             local bg = Color(20,20,20,220)
             if self:IsHovered() then bg = Color(40,40,40,220) end
@@ -65,11 +70,25 @@ local function openMenu(defaultTab, byF4)
         end
     end
 
+    if Dubz.Config.EnableServerName == true then
+        local name = Dubz.Config.ServerName or GetHostName()
+        local namex, namey = surface.GetTextSize(name)
+        local servername = vgui.Create("DLabel", frame)
+        servername:SetSize(namex, namey)
+        servername:SetPos(frame:GetWide() /2 -servername:GetWide() /2, 4)
+        servername:SetText("")
+        servername.Paint = function(self, w, h)
+            draw.SimpleText(name,"DubzHUD_Header", w/2 - namex/2 ,h/2, Color(240,240,240),1,1)
+        end
+    end
+
     local side = vgui.Create("DPanel", frame)
-    side:Dock(LEFT); side:SetWide(cfg.SidebarWidth or 280)
+    side:Dock(LEFT); 
+    side:SetWide(cfg.SidebarWidth or 280)
+    side:DockMargin(8,0,0,2)
     function side:Paint(w,h)
-        draw.RoundedBoxEx(12,0,0,w,h, Color(12,12,12,220), true,false,true,false)
-        surface.SetDrawColor(Dubz.GetAccentColor()); surface.DrawRect(0,0,4,h)
+        draw.RoundedBoxEx(12,0,0,w,h, Color(12,12,12,220), true,true,true,true)
+        surface.SetDrawColor(Dubz.GetAccentColor()); surface.DrawRect(0,0,0,h)
     end
 
     local header = vgui.Create("DPanel", side)
@@ -118,8 +137,8 @@ local function openMenu(defaultTab, byF4)
     if allowedAdmin then stackBtn(sideBtns, "Admin", function() if Dubz.OpenAdminWindow then Dubz.OpenAdminWindow() end end) end
 
     content = vgui.Create("DPanel", frame)
-    content:Dock(FILL); content:DockMargin(12,12,12,12)
-    function content:Paint(w,h) Dubz.DrawBubble(0,0,w,h, Color(24,24,24,220)) end
+    content:Dock(FILL); content:DockMargin(12,0,8,2)
+    function content:Paint(w,h) Dubz.DrawBubble(0,0,w,h, Color(12,12,12,220)) end
 
     local active = nil
     function switchTo(id, preload)

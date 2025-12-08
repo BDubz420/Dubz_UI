@@ -5,6 +5,11 @@ Dubz.Themes = Dubz.Themes or {}
 
 Dubz.Config.Version = "v0.6.7"
 
+--------------------------------------------------------------------------------------
+-- DO NOT TOUCH ANYTHING ABOVE THIS LINE
+--------------------------------------------------------------------------------------
+Dubz.Config.ServerName = "Dubz DarkRP"
+Dubz.Config.EnableServerName = false
 -- Theme / Accent
 Dubz.Colors.Accent = Color(37,150,190)
 Dubz.Colors.Background = Color(0,0,0,160)
