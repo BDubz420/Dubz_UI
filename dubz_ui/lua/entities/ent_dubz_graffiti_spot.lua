@@ -158,7 +158,13 @@ function ENT:StartClaim(ply, opts)
     end
 
     if not isCleaning and not gid then
-        ply:ChatPrint("Make a gang first to claim this territory, or use the spray to clean it.")
+        ply:ChatPrint("Make a gang first to claim this territory, then spray it to claim.")
+        return
+    end
+
+    -- Only allow claims to start from the spray can (attack key). Cleaning can be E or spray.
+    if not isCleaning and (not opts or opts.key ~= IN_ATTACK) then
+        ply:ChatPrint("Equip your spray paint and hold attack while looking at the plate to claim.")
         return
     end
 
@@ -177,12 +183,21 @@ end
 
 function ENT:Use(ply)
     if not IsValid(ply) then return end
-    self:StartClaim(ply, { key = IN_USE })
-    if not (Dubz.GangByMember and Dubz.GangByMember[ply:SteamID64()]) then
-        ply:ChatPrint("You can clean this graffiti, or create a gang and spray your own tag.")
-    else
-        ply:ChatPrint("Equip your spray can and hold attack while looking at the pole to claim.")
+    local hasGang = Dubz.GangByMember and Dubz.GangByMember[ply:SteamID64()]
+
+    if not hasGang and self:GetIsClaimed() then
+        -- Allow unganged players to clean with E
+        self:StartClaim(ply, { key = IN_USE, mode = "clean" })
+        ply:ChatPrint("Hold E to scrub the graffiti clean for a small payout.")
+        return
     end
+
+    if not hasGang then
+        ply:ChatPrint("Clean the graffiti with E, or create a gang and spray your own tag.")
+        return
+    end
+
+    ply:ChatPrint("Use the spray paint can and hold attack while looking at the plate to claim.")
 end
 
 function ENT:Think()
@@ -566,7 +581,7 @@ hook.Add("Think", "Dubz_Territory_ClaimThink", function()
         return
     end
 
-    if not LocalPlayer():KeyDown(IN_USE) then
+    if not (LocalPlayer():KeyDown(IN_USE) or LocalPlayer():KeyDown(IN_ATTACK)) then
         TerritoryHUD_Active = false
         return
     end
@@ -618,7 +633,7 @@ hook.Add("Think", "Dubz_Territory_ClearBlock", function()
     if not TerritoryHUD_BlockUntilRelease then return end
 
     -- Player released E → remove block
-    if not LocalPlayer():KeyDown(IN_USE) then
+    if not (LocalPlayer():KeyDown(IN_USE) or LocalPlayer():KeyDown(IN_ATTACK)) then
         TerritoryHUD_BlockUntilRelease = false
     end
 end)
