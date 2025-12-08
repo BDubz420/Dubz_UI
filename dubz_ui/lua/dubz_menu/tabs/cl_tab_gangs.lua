@@ -164,6 +164,10 @@ local function GangXPNeeded(level)
     return 250 + math.floor((level - 1) * 125)
 end
 
+local function GangXPNeeded(level)
+    return 250 + math.floor((level - 1) * 125)
+end
+
 local function ColorToTable(c)
     return { r = c.r, g = c.g, b = c.b }
 end
@@ -767,6 +771,26 @@ local function DrawGangOverview(pnl, w, y, accent, g)
     PanelFrame(idX, idY, colW, rowH, accent, "left")
 
     draw.SimpleText(g.name or "Gang", "DubzHUD_Title", idX + 16, idY + 10, accent)
+
+    local lvl = math.max(1, tonumber(g.level) or 1)
+    local xp  = math.max(0, tonumber(g.xp) or 0)
+    local need = GangXPNeeded(lvl)
+
+    local lvlText = "Lvl " .. lvl
+    surface.SetFont("DubzHUD_Tag")
+    local lvlW = select(1, surface.GetTextSize(lvlText)) + 16
+    local lvlBoxW = math.max(54, lvlW)
+    local lvlBoxX = idX + colW - lvlBoxW - 16
+    draw.RoundedBox(6, lvlBoxX, idY + 8, lvlBoxW, 22, Color(20,20,20,200))
+    draw.SimpleText(lvlText, "DubzHUD_Tag", lvlBoxX + lvlBoxW / 2, idY + 19, Color(200,220,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+
+    local xpBarW = colW - 32
+    local xpBarX = idX + 16
+    local xpBarY = idY + 34
+    local pct = math.Clamp(xp / math.max(need, 1), 0, 1)
+    draw.RoundedBox(6, xpBarX, xpBarY, xpBarW, 12, Color(0,0,0,180))
+    draw.RoundedBox(6, xpBarX, xpBarY, xpBarW * pct, 12, Color(accent.r, accent.g, accent.b, 230))
+    draw.SimpleText(string.format("XP: %d / %d", math.floor(xp), math.floor(need)), "DubzHUD_Tag", xpBarX + 4, xpBarY - 2, Color(230,230,230))
 
     local lvl = math.max(1, tonumber(g.level) or 1)
     local xp  = math.max(0, tonumber(g.xp) or 0)
