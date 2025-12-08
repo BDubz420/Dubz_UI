@@ -53,14 +53,43 @@ function Dubz.Graffiti.GetTextForGang(gang)
     return txt, col
 end
 
--- TERRITORY INCOME TICK
 if SERVER then
+    util.AddNetworkString("Dubz_Territory_PayoutTimer")
+
+    local function BroadcastPayoutTimer(interval)
+        local nextTick = CurTime() + interval
+        Dubz.NextTerritoryPayout = nextTick
+
+        net.Start("Dubz_Territory_PayoutTimer")
+            net.WriteFloat(interval)
+            net.WriteFloat(nextTick)
+        net.Broadcast()
+    end
+
+    local function SendPayoutTimer(ply)
+        if not IsValid(ply) then return end
+        local interval = (Dubz.Config.Territories.Income.Interval or 60)
+        local nextTick = Dubz.NextTerritoryPayout or (CurTime() + interval)
+
+        net.Start("Dubz_Territory_PayoutTimer")
+            net.WriteFloat(interval)
+            net.WriteFloat(nextTick)
+        net.Send(ply)
+    end
+
+    hook.Add("PlayerInitialSpawn", "Dubz_TerritoryTimerSync", function(ply)
+        timer.Simple(2, function()
+            SendPayoutTimer(ply)
+        end)
+    end)
+
     timer.Create("Dubz_Territory_IncomeTick", (Dubz.Config.Territories.Income.Interval or 60), 0, function()
         -- Make sure config + Dubz tables exist
         if not Dubz or not Dubz.Config or not Dubz.Config.Territories then return end
 
-        local TCFG   = Dubz.Config.Territories
-        local income = TCFG.Income or {}
+        local TCFG    = Dubz.Config.Territories
+        local income  = TCFG.Income or {}
+        local abandon = TCFG.Abandon or {}
         if income.Enabled == false then return end
 
         -- Make sure gang tables exist before touching them
@@ -73,6 +102,8 @@ if SERVER then
         end
 
         local poles = ents.FindByClass(TCFG.EntityClass or "ent_dubz_graffiti_spot")
+        local radius = (TCFG.CaptureRadius or 250)
+        local radiusSqr = radius * radius
 
         for _, ent in ipairs(poles) do
             if not IsValid(ent) or not ent.GetIsClaimed or not ent:GetIsClaimed() then continue end
@@ -94,19 +125,36 @@ if SERVER then
                         break
                     end
                 end
-                if not anyOnline then continue end -- no payout this tick
+                if not anyOnline then
+                    ent:SetIsAbandoned(true)
+                    goto CONTINUE_TERR
+                end
             end
 
             ----------------------------------------------------
-            -- COLLECT ONLINE MEMBERS (FOR MEMBER SHARE)
+            -- COLLECT NEARBY MEMBERS ONLY (FOR MEMBER SHARE)
             ----------------------------------------------------
-            local onlineMembers = {}
+            local nearbyMembers = {}
             if income.GiveOnlineMembers ~= false then
                 for _, p in ipairs(player.GetAll()) do
-                    if IsValid(p) and gangByMember[p:SteamID64()] == gid then
-                        table.insert(onlineMembers, p)
+                    if not IsValid(p) then continue end
+                    if gangByMember[p:SteamID64()] ~= gid then continue end
+                    if p:GetPos():DistToSqr(ent:GetPos()) <= radiusSqr then
+                        table.insert(nearbyMembers, p)
                     end
                 end
+            end
+
+            if ent.RecordPresence then
+                ent:RecordPresence(#nearbyMembers > 0, abandon)
+            end
+
+            if #nearbyMembers == 0 then
+                goto CONTINUE_TERR
+            end
+
+            if ent.GetIsAbandoned and ent:GetIsAbandoned() then
+                goto CONTINUE_TERR
             end
 
             ----------------------------------------------------
@@ -117,16 +165,31 @@ if SERVER then
                 gid,
                 ent,
                 income.TotalPerTick or 0,
-                onlineMembers
+                nearbyMembers
             )
+
+            if Dubz.GangAddXP then
+                Dubz.GangAddXP(gid, "territory_payout")
+            end
+
+            ::CONTINUE_TERR::
         end
+
+        BroadcastPayoutTimer(Dubz.Config.Territories.Income.Interval or 60)
     end)
+
+    BroadcastPayoutTimer(Dubz.Config.Territories.Income.Interval or 60)
 end
 
 -------------------------------------------------
 -- CLIENT DRAW: used by the territory entity
 -------------------------------------------------
 if CLIENT then
+
+net.Receive("Dubz_Territory_PayoutTimer", function()
+    Dubz.TerritoryPayoutInterval = net.ReadFloat()
+    Dubz.NextTerritoryPayout     = net.ReadFloat()
+end)
 
 -- graffiti font helpers (use configured font files and cache scaled variants)
 local graffitiFontCache = {
@@ -217,7 +280,7 @@ end
 -- =========================================================
 --   FIXED / UPDATED DRAW2D FUNCTION
 -- =========================================================
-function Dubz.Graffiti.Draw2D(x, y, w, h, gang)
+function Dubz.Graffiti.Draw2D(x, y, w, h, gang, alphaOverride)
     if not gang then return end
     gang.graffiti = gang.graffiti or {}
 
@@ -237,7 +300,7 @@ function Dubz.Graffiti.Draw2D(x, y, w, h, gang)
     -- GANG COLOR
     ---------------------------------------------------------
     local col = gang.color or { r = 255, g = 255, b = 255 }
-    local mainColor = Color(col.r, col.g, col.b)
+    local mainColor = Color(col.r, col.g, col.b, math.Clamp(alphaOverride or 255, 0, 255))
 
     ---------------------------------------------------------
     -- TEXT POSITIONING
