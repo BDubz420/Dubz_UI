@@ -204,7 +204,7 @@ Dubz.Config.Territories = {
         Enabled = true,
 
         -- Balanced for a low-pop, rags→riches server
-        Interval = 300,             -- 5 minutes per payout
+        Interval = 900,             -- 15 minutes per payout (slower, larger cycles)
         TotalPerTick = 180,         -- per territory (balanced)
 
         GangBankShare = 0.7,        -- 70% → gang bank
@@ -212,6 +212,12 @@ Dubz.Config.Territories = {
 
         GiveOnlineMembers = true,   -- players actually get income now
         RequireOwnerOnline = true   -- prevents offline gang farming
+    },
+
+    -- Abandonment / weathering
+    Abandon = {
+        Grace    = 120,             -- seconds after last nearby member before weathering starts
+        FadeTime = 180              -- seconds to fully fade graffiti once abandoned
     },
 
     -- “claimed by” players tracking

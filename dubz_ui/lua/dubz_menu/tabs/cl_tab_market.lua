@@ -149,6 +149,9 @@ Dubz.RegisterTab("market", "Market", "market", function(parent)
                     draw.SimpleText(item.name or "Item", "DubzHUD_Body", 100, 10, Color(230,230,230))
 
                     local cost = item.price or (item.getPrice and item:getPrice(LocalPlayer())) or 0
+                    if group.type == "Weapons" and item.pricesep then
+                        cost = item.pricesep
+                    end
                     local ctext = DarkRP.formatMoney and DarkRP.formatMoney(cost)
                                or ("$"..math.floor(cost))
                     draw.SimpleText(ctext, "DubzHUD_Small", 100, 36, Color(60,255,90))
@@ -176,6 +179,11 @@ Dubz.RegisterTab("market", "Market", "market", function(parent)
                     elseif group.type == "Weapons" then
                         draw.SimpleText("Qty: 1",
                             "DubzHUD_Small", 100, 54, Color(200,200,255))
+
+                        if item.separate or item.shipmentClass or item.category then
+                            draw.SimpleText("Shipment: "..(item.category or "Shipment"),
+                                "DubzHUD_Small", 100, 72, Color(190,190,215))
+                        end
 
                     elseif group.type == "Shipments" then
                         local qty = item.amount or (item.getAmount and item:getAmount()) or 10
