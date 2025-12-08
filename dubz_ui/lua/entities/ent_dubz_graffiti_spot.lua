@@ -12,11 +12,13 @@ ENT.RenderGroup = RENDERGROUP_TRANSLUCENT
 -----------------------------------------------------
 function ENT:SetupDataTables()
     self:NetworkVar("Bool",   0, "IsClaimed")
+    self:NetworkVar("Bool",   1, "IsAbandoned")
     self:NetworkVar("String", 0, "OwnerGangId")
     self:NetworkVar("String", 1, "OwnerGangName")
 
     -- NEW: Territory name
     self:NetworkVar("String", 2, "TerritoryName")
+    self:NetworkVar("Float",  0, "GraffitiAlpha")
 end
 
 -----------------------------------------------------
@@ -80,6 +82,10 @@ function ENT:Initialize()
     self:SetUseType(SIMPLE_USE)
     self.TerritoryRecordId = nil
     self._territoryGang = ""
+    self._lastPresence = CurTime()
+    self._abandonStart = nil
+    self:SetIsAbandoned(false)
+    self:SetGraffitiAlpha(255)
 
     -- default placeholder name
     if self:GetTerritoryName() == "" then
@@ -94,6 +100,10 @@ function ENT:ResetOwnership(forceName)
     end
     self.TerritoryRecordId = nil
     self._territoryGang = ""
+    self._abandonStart = nil
+    self._lastPresence = CurTime()
+    self:SetIsAbandoned(false)
+    self:SetGraffitiAlpha(255)
     self:SetIsClaimed(false)
     self:SetOwnerGangId("")
     self:SetOwnerGangName("")
@@ -112,23 +122,8 @@ function ENT:AlignToWall(hitPos, hitNormal)
     self:SetAngles(ang)
 end
 
-function ENT:Use(ply)
-    if not IsValid(ply) then return end
-
-    local sid = ply:SteamID64()
-    local gid = Dubz.GangByMember and Dubz.GangByMember[sid]
-
-    if not gid then
-        ply:ChatPrint("You must be in a gang to claim this.")
-        return
-    end
-
-    if self:GetIsClaimed() and self:GetOwnerGangId() == gid then
-        ply:ChatPrint("Your gang already owns this territory.")
-        return
-    end
-
-    if self:GetIsClaimed() and self:GetOwnerGangId() ~= gid and (not self._lastAlert or self._lastAlert < CurTime()) then
+local function AlertOwners(self, terrName)
+    if self:GetIsClaimed() and (not self._lastAlert or self._lastAlert < CurTime()) then
         local owners = {}
         for _, p in ipairs(player.GetAll()) do
             if not IsValid(p) then continue end
@@ -137,18 +132,57 @@ function ENT:Use(ply)
             end
         end
 
-        local terrName = self:GetTerritoryName() ~= "" and self:GetTerritoryName() or "a territory"
         for _, p in ipairs(owners) do
             p:ChatPrint(string.format("[Gang] Someone is attempting to claim %s!", terrName))
         end
 
         self._lastAlert = CurTime() + 10
     end
+end
+
+function ENT:StartClaim(ply, opts)
+    if not IsValid(ply) then return end
+
+    local sid = ply:SteamID64()
+    local gid = (opts and opts.gang) or (Dubz.GangByMember and Dubz.GangByMember[sid])
+    local isCleaning = (not gid) or (opts and opts.mode == "clean")
+
+    if self:GetIsClaimed() and not isCleaning and self:GetOwnerGangId() == gid then
+        ply:ChatPrint("Your gang already owns this territory.")
+        return
+    end
+
+    if isCleaning and not self:GetIsClaimed() then
+        ply:ChatPrint("There is nothing to clean here.")
+        return
+    end
+
+    if not isCleaning and not gid then
+        ply:ChatPrint("Make a gang first to claim this territory, or use the spray to clean it.")
+        return
+    end
+
+    if self:GetIsClaimed() and self:GetOwnerGangId() ~= gid and not isCleaning then
+        local terrName = self:GetTerritoryName() ~= "" and self:GetTerritoryName() or "a territory"
+        AlertOwners(self, terrName)
+    end
 
     self.IsClaiming[ply] = {
-        start = CurTime(),
-        gang  = gid
+        start   = CurTime(),
+        gang    = gid or "",
+        key     = (opts and opts.key) or IN_USE,
+        mode    = isCleaning and "clean" or "claim",
     }
+end
+
+function ENT:Use(ply)
+    if not IsValid(ply) then return end
+    self:StartClaim(ply, { key = IN_USE })
+    if not (Dubz.GangByMember and Dubz.GangByMember[ply:SteamID64()]) then
+        ply:ChatPrint("You can clean this graffiti, or create a gang and spray your own tag.")
+    else
+        ply:ChatPrint("Equip your spray can and hold attack while looking at the pole to claim.")
+    end
 end
 
 function ENT:Think()
@@ -168,7 +202,7 @@ function ENT:Think()
             continue
         end
 
-        -- must keep aiming at entity while holding E
+        -- must keep aiming at entity while holding E/attack
         local tr = ply:GetEyeTrace()
         if tr.Entity ~= self then
             ResetClientProgress(ply)
@@ -176,13 +210,16 @@ function ENT:Think()
             continue
         end
 
-        if not ply:KeyDown(IN_USE) then
+        local key = data.key or IN_USE
+        if not ply:KeyDown(key) then
             ResetClientProgress(ply)
             self.IsClaiming[ply] = nil
             continue
         end
 
         local prog = (CurTime() - data.start) / CLAIM_TIME
+        self.ClaimProg = prog
+        self.ProgTime  = CurTime()
 
         net.Start("Dubz_Graffiti_ClaimProgress")
             net.WriteEntity(self)
@@ -190,8 +227,33 @@ function ENT:Think()
         net.Send(ply)
 
         if prog >= 1 then
-            self:FinishClaim(ply, data.gang)
+            self:FinishClaim(ply, data.gang, data.mode)
             self.IsClaiming[ply] = nil
+        end
+    end
+
+    -- Weathering / abandonment
+    if self:GetIsClaimed() then
+        local cfg = (Dubz.Config and Dubz.Config.Territories) or {}
+        local abandon = cfg.Abandon or {}
+
+        if not self._nextPresenceCheck or CurTime() >= self._nextPresenceCheck then
+            local hasNearby = false
+            local gid = self:GetOwnerGangId()
+            local radius = (cfg.CaptureRadius or 250)
+            local radiusSqr = radius * radius
+            for _, p in ipairs(player.GetAll()) do
+                if not IsValid(p) then continue end
+                if Dubz.GangByMember and Dubz.GangByMember[p:SteamID64()] == gid then
+                    if p:GetPos():DistToSqr(self:GetPos()) <= radiusSqr then
+                        hasNearby = true
+                        break
+                    end
+                end
+            end
+
+            self:RecordPresence(hasNearby, abandon)
+            self._nextPresenceCheck = CurTime() + 1.0
         end
     end
 
@@ -204,19 +266,74 @@ function ENT:Think()
     return true
 end
 
-function ENT:FinishClaim(ply, gid)
+function ENT:RecordPresence(hasNearby, abandonCfg)
+    abandonCfg = abandonCfg or {}
+
+    if not self:GetIsClaimed() then
+        self._abandonStart = nil
+        self:SetGraffitiAlpha(255)
+        self:SetIsAbandoned(false)
+        return
+    end
+
+    if hasNearby then
+        self._lastPresence = CurTime()
+        self._abandonStart = nil
+        self:SetIsAbandoned(false)
+        self:SetGraffitiAlpha(math.min(255, (self:GetGraffitiAlpha() or 255) + 30))
+        return
+    end
+
+    local grace = abandonCfg.Grace or 60
+    local fade  = math.max(30, abandonCfg.FadeTime or 120)
+
+    if (CurTime() - self._lastPresence) < grace then return end
+
+    if not self._abandonStart then
+        self._abandonStart = CurTime()
+    end
+
+    local elapsed = CurTime() - self._abandonStart
+    local t = math.Clamp(elapsed / fade, 0, 1)
+    local alpha = math.floor(255 * (1 - t))
+    self:SetGraffitiAlpha(alpha)
+    self:SetIsAbandoned(true)
+
+    if t >= 1 then
+        self:ResetOwnership("Unclaimed Territory")
+    end
+end
+
+function ENT:FinishClaim(ply, gid, mode)
+    local cleaning = (mode == "clean") or (not gid or gid == "")
+    local previous = self:GetOwnerGangId()
+    if cleaning then
+        self:ResetOwnership("Unclaimed Territory")
+        if IsValid(ply) then
+            if AddMoney then AddMoney(ply, 250) end
+            ply:ChatPrint("You cleaned the graffiti. Create a gang to claim this spot next time.")
+            local wep = ply:GetActiveWeapon()
+            if IsValid(wep) and wep.ConsumeSprayUse then
+                wep:ConsumeSprayUse()
+            end
+        end
+        return
+    end
+
     local gang = Dubz.Gangs and Dubz.Gangs[gid]
     if not gang then return end
-
-    local previous = self:GetOwnerGangId()
 
     if self:GetIsClaimed() then
         self:ResetOwnership()
     end
 
     self:SetIsClaimed(true)
+    self:SetIsAbandoned(false)
+    self:SetGraffitiAlpha(255)
     self:SetOwnerGangId(gid)
     self:SetOwnerGangName(gang.name)
+    self._lastPresence = CurTime()
+    self._abandonStart = nil
 
     if AddGangTerritory then
         local pos = self:GetPos()
@@ -235,6 +352,15 @@ function ENT:FinishClaim(ply, gid)
     net.Start("Dubz_Graffiti_ClaimFinished")
         net.WriteEntity(self)
     net.Broadcast()
+
+    if Dubz.GangAddXP then
+        Dubz.GangAddXP(gid, "territory_claim")
+    end
+
+    local wep = IsValid(ply) and ply:GetActiveWeapon()
+    if IsValid(wep) and wep.ConsumeSprayUse then
+        wep:ConsumeSprayUse()
+    end
 
     if previous ~= "" and Dubz.Gangs[previous] then
         local gWars = gang.wars
@@ -331,6 +457,7 @@ function ENT:Draw()
     local drawAng = Angle(ang.p, ang.y, ang.r)
 
     local claimed = self:GetIsClaimed()
+    local alpha   = math.Clamp(self:GetGraffitiAlpha() or 255, 0, 255)
 
     cam.Start3D2D(drawPos, drawAng, 0.25)
 
@@ -357,7 +484,7 @@ function ENT:Draw()
 
             -- Draw graffiti (no background)
             if gang.graffiti and Dubz.Graffiti and Dubz.Graffiti.Draw2D then
-                Dubz.Graffiti.Draw2D(10, -370, 360, 360, gang)
+                Dubz.Graffiti.Draw2D(10, -370, 360, 360, gang, alpha)
             end
 
             --[[
@@ -377,10 +504,10 @@ function ENT:Draw()
         else
             if not self.ClaimProg then
                 draw.SimpleText(
-                    "Hold E to claim Territory",
+                    "Spray to claim Territory",
                     "DermaLarge",
                     191.5, -191.5,
-                    Color(0,255,0),
+                    Color(0,255,0, alpha),
                     TEXT_ALIGN_CENTER,
                     TEXT_ALIGN_CENTER
                 )
