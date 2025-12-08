@@ -93,14 +93,14 @@ local function GetGangTerritories(gid)
         for _, info in pairs(g.territories) do
             local name = tostring(info and info.name or "")
             if name ~= "" then
-                table.insert(list, name)
+                table.insert(list, { name = name, id = info.id or name })
             end
         end
     end
 
     if #list > 0 then
         table.sort(list, function(a, b)
-            return string.lower(a) < string.lower(b)
+            return string.lower(a.name) < string.lower(b.name)
         end)
         return list
     end
@@ -115,12 +115,12 @@ local function GetGangTerritories(gid)
             if name == "" then
                 name = "Unnamed Territory"
             end
-            table.insert(list, name)
+            table.insert(list, { name = name, id = ent.TerritoryRecordId or name, ent = ent })
         end
     end
 
     table.sort(list, function(a, b)
-        return string.lower(a) < string.lower(b)
+        return string.lower(a.name) < string.lower(b.name)
     end)
 
     return list
@@ -158,6 +158,10 @@ local function PanelFrame(x, y, w, h, accent, side)
     else -- left
         surface.DrawRect(x, y, 3, h)
     end
+end
+
+local function GangXPNeeded(level)
+    return 250 + math.floor((level - 1) * 125)
 end
 
 local function ColorToTable(c)
@@ -287,13 +291,35 @@ local function DrawTerritories(pnl, w, y, accent, g)
     local count       = #territories
 
     local rowH  = 22
-    local baseH = 52
+    local baseH = 96
     local totalH = baseH + math.max(1, count) * rowH
 
     PanelFrame(12, y, w - 24, totalH, accent, "left")
     draw.SimpleText("Territories Controlled", "DubzHUD_Title", 28, y + 10, accent)
 
-    local yy = y + 40
+    local payoutInterval = Dubz.TerritoryPayoutInterval or (Dubz.Config.Territories.Income.Interval or 1)
+    local nextTick       = Dubz.NextTerritoryPayout or (CurTime() + payoutInterval)
+    local timeLeft       = math.max(0, nextTick - CurTime())
+    local pct            = 1 - (timeLeft / math.max(1, payoutInterval))
+
+    draw.SimpleText("Territories pay out near-by members when the timer hits.", "DubzHUD_Tag", 28, y + 34, Color(200,200,200))
+    draw.SimpleText("Stay close to your graffiti to get paid!", "DubzHUD_Tag", 28, y + 52, Color(220,220,220))
+
+    local barW, barH = w - 70, 16
+    local barX, barY = 28, y + 68
+    draw.RoundedBox(6, barX, barY, barW, barH, Color(0,0,0,150))
+    draw.RoundedBox(6, barX, barY, barW * pct, barH, Color(accent.r, accent.g, accent.b, 220))
+
+    local timeText = string.format("Next payout in %ds", math.floor(timeLeft))
+    draw.SimpleText(timeText, "DubzHUD_Small", barX + 6, barY - 2, Color(230,230,230))
+
+    local yy = y + 100
+
+    pnl._territoryButtons = pnl._territoryButtons or {}
+    for _, btn in ipairs(pnl._territoryButtons) do
+        if IsValid(btn) then btn:Remove() end
+    end
+    pnl._territoryButtons = {}
 
     if count == 0 then
         draw.SimpleText(
@@ -303,8 +329,26 @@ local function DrawTerritories(pnl, w, y, accent, g)
             Color(220,220,220)
         )
     else
-        for _, name in ipairs(territories) do
+        for _, terr in ipairs(territories) do
+            local name = terr.name or "Territory"
             draw.SimpleText("• " .. name, "DubzHUD_Body", 28, yy, Color(230,230,230))
+
+            if IsLeaderC() then
+                local btn = vgui.Create("DButton", pnl)
+                btn:SetText("X")
+                btn:SetSize(28, 20)
+                btn:SetPos(w - 60, yy - 2)
+                btn.Paint = function(_, ww, hh)
+                    draw.RoundedBox(6, 0, 0, ww, hh, Color(170,60,60))
+                    draw.SimpleText("X", "DubzHUD_Small", ww/2, hh/2, Color(255,255,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                end
+                btn.DoClick = function()
+                    SendAction({ cmd = "unclaim_territory", target = terr.id or name })
+                end
+                table.insert(pnl._territoryButtons, btn)
+                if pnl.RegisterGangElem then pnl:RegisterGangElem(btn) end
+            end
+
             yy = yy + rowH
         end
     end
@@ -720,6 +764,20 @@ local function DrawGangOverview(pnl, w, y, accent, g)
 
     draw.SimpleText(g.name or "Gang", "DubzHUD_Title", idX + 16, idY + 10, accent)
 
+    local lvl = math.max(1, tonumber(g.level) or 1)
+    local xp  = math.max(0, tonumber(g.xp) or 0)
+    local need = GangXPNeeded(lvl)
+
+    draw.SimpleText("Lvl " .. lvl, "DubzHUD_Title", idX + colW - 70, idY + 10, Color(230,230,230))
+
+    local xpBarW = colW - 32
+    local xpBarX = idX + 16
+    local xpBarY = idY + 34
+    local pct = math.Clamp(xp / math.max(need, 1), 0, 1)
+    draw.RoundedBox(6, xpBarX, xpBarY, xpBarW, 12, Color(0,0,0,180))
+    draw.RoundedBox(6, xpBarX, xpBarY, xpBarW * pct, 12, Color(accent.r, accent.g, accent.b, 230))
+    draw.SimpleText(string.format("XP: %d / %d", math.floor(xp), math.floor(need)), "DubzHUD_Tag", xpBarX + 4, xpBarY - 2, Color(230,230,230))
+
     -- War-ready tag (big & visible)
     local warReadyText  = ""
     local warReadyColor = Color(255,80,80)
@@ -730,7 +788,7 @@ local function DrawGangOverview(pnl, w, y, accent, g)
         warReadyText  = "WAR READY"
         warReadyColor = Color(255,60,60)
     end
-    draw.SimpleText(warReadyText, "DubzHUD_BodyBold", idX + 16, idY + 34, warReadyColor)
+    draw.SimpleText(warReadyText, "DubzHUD_BodyBold", idX + 16, idY + 52, warReadyColor)
 
     local leaderName = "Unknown"
     if g.leaderSid64 and g.members and g.members[g.leaderSid64] then
@@ -1405,7 +1463,7 @@ Dubz.RegisterTab("gangs", Dubz.Config.Gangs.TabTitle or "Gangs", "users", functi
         local g = GetMyGang()
         local y = 12
 
-        surface.SetDrawColor(12,12,12,230)
+        surface.SetDrawColor(0,0,0,190)
         surface.DrawRect(0,0,w,h)
 
         if not g then
