@@ -298,7 +298,11 @@ local function DrawTerritories(pnl, w, y, accent, g)
     draw.SimpleText("Territories Controlled", "DubzHUD_Title", 28, y + 10, accent)
 
     local payoutInterval = Dubz.TerritoryPayoutInterval or (Dubz.Config.Territories.Income.Interval or 1)
-    local nextTick       = Dubz.NextTerritoryPayout or (CurTime() + payoutInterval)
+    if not Dubz.NextTerritoryPayout then
+        Dubz.NextTerritoryPayout = CurTime() + payoutInterval
+    end
+
+    local nextTick       = Dubz.NextTerritoryPayout
     local timeLeft       = math.max(0, nextTick - CurTime())
     local pct            = 1 - (timeLeft / math.max(1, payoutInterval))
 
@@ -768,7 +772,13 @@ local function DrawGangOverview(pnl, w, y, accent, g)
     local xp  = math.max(0, tonumber(g.xp) or 0)
     local need = GangXPNeeded(lvl)
 
-    draw.SimpleText("Lvl " .. lvl, "DubzHUD_Title", idX + colW - 70, idY + 10, Color(230,230,230))
+    local lvlText = "Lvl " .. lvl
+    surface.SetFont("DubzHUD_Tag")
+    local lvlW = select(1, surface.GetTextSize(lvlText)) + 16
+    local lvlBoxW = math.max(54, lvlW)
+    local lvlBoxX = idX + colW - lvlBoxW - 16
+    draw.RoundedBox(6, lvlBoxX, idY + 8, lvlBoxW, 22, Color(20,20,20,200))
+    draw.SimpleText(lvlText, "DubzHUD_Tag", lvlBoxX + lvlBoxW / 2, idY + 19, Color(200,220,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
     local xpBarW = colW - 32
     local xpBarX = idX + 16

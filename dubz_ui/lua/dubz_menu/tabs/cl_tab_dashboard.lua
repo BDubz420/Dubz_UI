@@ -318,8 +318,9 @@ Dubz.RegisterTab("dashboard","Dashboard","dashboard", function(parent)
 
             for i = 1, math.min(gshow, #gangs) do
                 local t = gangs[i]
+                local rowY = gy + gyoff
 
-                Dubz.DrawBubble(listX, gy + gyoff, listW, 38, Color(24,24,24,220))
+                Dubz.DrawBubble(listX, rowY, listW, 38, Color(24,24,24,220))
 
                 -- Rank colors
                 local rcol =
@@ -328,21 +329,23 @@ Dubz.RegisterTab("dashboard","Dashboard","dashboard", function(parent)
                     (i == 3 and Color(205,127,50)) or
                     Color(230,230,230)
 
-                draw.SimpleText("#"..i, "DubzHUD_Small", listX + 10, gy + gyoff + 10, rcol)
+                draw.SimpleText("#"..i, "DubzHUD_Small", listX + 10, rowY + 10, rcol)
 
+                local swatchX = listX + 72
                 surface.SetDrawColor(t.color or Color(255,255,255))
-                draw.RoundedBox(6, listX + 38, gy + gyoff + 10, 16, 16, t.color or Color(255,255,255))
+                draw.RoundedBox(6, swatchX, rowY + 9, 18, 18, t.color or Color(255,255,255))
 
-                draw.SimpleText(t.name, "DubzHUD_Body", listX + 64, gy + gyoff + 8, Color(230,230,230))
+                local nameX = swatchX + 30
+                draw.SimpleText(t.name, "DubzHUD_Body", nameX, rowY + 8, Color(180,180,180))
 
-                draw.RoundedBox(6, listX + 64, gy + gyoff + 24, 60, 12, Color(20,20,20,200))
-                draw.SimpleText("Lv." .. tostring(t.level or 1), "DubzHUD_Tag", listX + 94, gy + gyoff + 30, Color(200,220,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                draw.RoundedBox(6, nameX, rowY + 24, 70, 12, Color(20,20,20,200))
+                draw.SimpleText("Lv." .. tostring(t.level or 1), "DubzHUD_Tag", nameX + 35, rowY + 30, Color(200,220,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
                 local moneyText = DarkRP and DarkRP.formatMoney
                     and DarkRP.formatMoney(t.money)
                     or ("$" .. tostring(t.money))
 
-                draw.SimpleText(moneyText, "DubzHUD_Body", listX + listW - 10, gy + gyoff + 8,
+                draw.SimpleText(moneyText, "DubzHUD_Body", listX + listW - 10, rowY + 8,
                     Color(230,230,230), TEXT_ALIGN_RIGHT)
 
                 gyoff = gyoff + 44

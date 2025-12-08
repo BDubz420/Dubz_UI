@@ -147,6 +147,13 @@ function ENT:StartClaim(ply, opts)
     local gid = (opts and opts.gang) or (Dubz.GangByMember and Dubz.GangByMember[sid])
     local isCleaning = (not gid) or (opts and opts.mode == "clean")
 
+    local desiredMode = isCleaning and "clean" or "claim"
+    local holdKey = (opts and opts.key) or IN_USE
+
+    -- If the player is already in a claim/clean flow with the same input, keep it running
+    local existing = self.IsClaiming[ply]
+    if existing and existing.mode == desiredMode and existing.key == holdKey then return end
+
     if self:GetIsClaimed() and not isCleaning and self:GetOwnerGangId() == gid then
         ply:ChatPrint("Your gang already owns this territory.")
         return
@@ -176,8 +183,8 @@ function ENT:StartClaim(ply, opts)
     self.IsClaiming[ply] = {
         start   = CurTime(),
         gang    = gid or "",
-        key     = (opts and opts.key) or IN_USE,
-        mode    = isCleaning and "clean" or "claim",
+        key     = holdKey,
+        mode    = desiredMode,
     }
 end
 
